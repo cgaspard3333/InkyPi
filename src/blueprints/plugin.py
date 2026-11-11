@@ -12,6 +12,7 @@ import os
 import logging
 from utils.i18n import _
 import threading
+import time
 
 logger = logging.getLogger(__name__)
 plugin_bp = Blueprint("plugin", __name__)
@@ -310,6 +311,22 @@ def update_now():
 # One preview at a time: each one may start a headless browser on a small device
 _preview_lock = threading.Lock()
 
+# Last plugin output, so that changing only the colour rendering of a preview (simulation,
+# photo/graphics/manual) does not render the plugin again (seconds of headless browser on a Pi).
+PREVIEW_CACHE_SECONDS = 600
+_preview_cache = {}
+
+
+def _preview_cache_key(plugin_id, plugin_settings):
+    content = {k: v for k, v in plugin_settings.items() if k not in eink.RENDER_FIELDS}
+    return json.dumps([plugin_id, content], sort_keys=True, default=str)
+
+
+def _cached_plugin_image(key):
+    if _preview_cache.get("key") == key and time.monotonic() - _preview_cache["time"] < PREVIEW_CACHE_SECONDS:
+        return _preview_cache["image"].copy()
+    return None
+
 
 @plugin_bp.route('/preview_image', methods=['POST'])
 def preview_image():
@@ -330,11 +347,19 @@ def preview_image():
         if not plugin_config:
             return jsonify({"error": _("Plugin '{name}' not found", name=plugin_id)}), 404
 
-        plugin = get_plugin_instance(plugin_config)
         simulate = plugin_settings.pop("simulateDisplay", None) == "true"
-        image = plugin.generate_image(plugin_settings, device_config)
+        reuse = plugin_settings.pop("reuseRender", None) == "true" and not preview_files
+        cache_key = _preview_cache_key(plugin_id, plugin_settings)
+        image = _cached_plugin_image(cache_key) if reuse else None
+        reused = image is not None
         if image is None:
-            return jsonify({"error": _("The plugin did not produce an image")}), 500
+            plugin = get_plugin_instance(plugin_config)
+            image = plugin.generate_image(plugin_settings, device_config)
+            if image is None:
+                return jsonify({"error": _("The plugin did not produce an image")}), 500
+            _preview_cache.clear()
+            if not preview_files:  # new uploads are deleted after the preview
+                _preview_cache.update(key=cache_key, image=image.copy(), time=time.monotonic())
         display_manager = current_app.config.get('DISPLAY_MANAGER')
         palette = display_manager.get_palette() if display_manager else None
         if simulate and palette:
@@ -348,6 +373,7 @@ def preview_image():
         buffer.seek(0)
         response = send_file(buffer, mimetype="image/png")
         response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Preview-Reused"] = "1" if reused else "0"
         return response
     except Exception as e:
         logger.exception(f"Error in preview_image: {str(e)}")

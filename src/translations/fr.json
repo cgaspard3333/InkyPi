@@ -55,6 +55,7 @@
     "Colour": "Couleur",
     "Colour of buttons and highlights in this web interface (not on the display). Click Save to keep it.": "Couleur des boutons et des éléments mis en avant dans cette interface web (pas sur l'écran). Cliquez sur Enregistrer pour la conserver.",
     "Colours on the display:": "Couleurs à l’écran :",
+    "Colours updated in {seconds} s (same plugin image). Nothing has been sent to the display yet.": "Couleurs mises à jour en {seconds} s (même image du plugin). Rien n’a encore été envoyé à l’écran.",
     "Contrast:": "Contraste :",
     "Coral": "Corail",
     "Could not read this album: check that link sharing is on": "Impossible de lire cet album : vérifiez que le partage par lien est activé",

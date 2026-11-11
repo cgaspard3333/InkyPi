@@ -35,6 +35,8 @@ MODES = (PHOTO, GRAPHICS, MANUAL)
 # Manual mode: per-instance values replacing the global image settings
 MANUAL_FIELDS = {"saturation": "colourSaturation", "contrast": "colourContrast",
                  "brightness": "colourBrightness", "sharpness": "colourSharpness"}
+# Settings that only change how an image is rendered on the panel, not the plugin's output
+RENDER_FIELDS = {"colourMode", "colourRendering", "colourInk", *MANUAL_FIELDS.values()}
 
 # Plugins that show photographs: everything else is rendered as graphics in auto mode.
 PHOTO_PLUGINS = {"image_folder", "image_upload", "image_album", "image_url", "google_photos",
