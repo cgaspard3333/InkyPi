@@ -1,4 +1,5 @@
 from plugins.base_plugin.base_plugin import BasePlugin
+from plugins.weather.i18n import LANGUAGES, localize_template_params
 from PIL import Image
 import os
 import requests
@@ -78,6 +79,7 @@ class Weather(BasePlugin):
             "expected_key": "OPEN_WEATHER_MAP_SECRET"
         }
         template_params['style_settings'] = True
+        template_params['languages'] = LANGUAGES
         return template_params
 
     def generate_image(self, settings, device_config):
@@ -136,6 +138,7 @@ class Weather(BasePlugin):
             dimensions = dimensions[::-1]
 
         template_params["plugin_settings"] = settings
+        localize_template_params(template_params, settings.get("language"))
 
         # Add last refresh time
         now = datetime.now(tz)
@@ -165,6 +168,7 @@ class Weather(BasePlugin):
                 current_icon = current_icon.replace("n", "d")
         data = {
             "current_date": dt.strftime("%A, %B %d"),
+            "current_dt": dt,
             "current_day_icon": self.get_plugin_dir(f'icons/{current_icon}.png'),
             "current_temperature": str(round(current.get("temp"))),
             "feels_like": str(round(current.get("feels_like"))),
@@ -190,6 +194,7 @@ class Weather(BasePlugin):
 
         data = {
             "current_date": dt.strftime("%A, %B %d"),
+            "current_dt": dt,
             "current_day_icon": self.get_plugin_dir(f'icons/{current_icon}.png'),
             "current_temperature": str(round(current.get("temperature", 0) + temperature_conversion)),
             "feels_like": str(round(current.get("apparent_temperature", current.get("temperature", 0)) + temperature_conversion)),
@@ -330,6 +335,7 @@ class Weather(BasePlugin):
             forecast.append(
                 {
                     "day": day_label,
+                    "date": dt.date(),
                     "high": round(day["temp"]["max"]),
                     "low": round(day["temp"]["min"]),
                     "icon": weather_icon_path,
@@ -377,6 +383,7 @@ class Weather(BasePlugin):
 
             forecast.append({
                 "day": day_label,
+                "date": local_date,
                 "high": round(temp_max[i]) if i < len(temp_max) and temp_max[i] is not None else "-",
                 "low": round(temp_min[i]) if i < len(temp_min) and temp_min[i] is not None else "-",
                 "icon": weather_icon_path,
