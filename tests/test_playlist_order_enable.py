@@ -80,3 +80,56 @@ def test_move_endpoint_rejects_bad_requests(client, payload):
 def test_enable_endpoint_requires_boolean(client):
     body = {"playlist_name": "P", "plugin_id": "clock", "plugin_instance": "a", "enabled": "false"}
     assert client[0].post("/set_plugin_instance_enabled", json=body).status_code == 400
+
+
+# ---------------------------------------------------------------- skip to next
+
+from refresh_task import RefreshTask  # noqa: E402
+
+
+class _Cfg:
+    def __init__(self, manager):
+        self.manager = manager
+
+    def get_config(self, key, default=None):
+        return {"timezone": "Europe/Paris", "plugin_cycle_interval_seconds": 3600}.get(key, default)
+
+    def get_playlist_manager(self):
+        return self.manager
+
+    def get_refresh_info(self):
+        from model import RefreshInfo
+        return RefreshInfo(None, None, None, None)
+
+
+def _task_with(playlists):
+    task = RefreshTask(_Cfg(PlaylistManager(playlists)), display_manager=mock.Mock())
+    shown = []
+    task._perform_refresh = lambda action, dt: shown.append(action.plugin_instance.name)
+    return task, shown
+
+
+def test_display_next_advances_active_playlist_skipping_paused():
+    task, shown = _task_with([_playlist(["a", "b", "c"], index=0, disabled=("b",))])
+    task.start()
+    try:
+        task.display_next(timeout=5)
+        task.display_next(timeout=5)
+    finally:
+        task.stop()
+    assert shown == ["c", "a"]
+
+
+@pytest.mark.parametrize("playlists", [
+    [],                                                   # no active playlist
+    [_playlist(["a"], disabled=("a",))],                  # nothing enabled
+])
+def test_display_next_errors_are_reported(playlists):
+    task, shown = _task_with(playlists)
+    task.start()
+    try:
+        with pytest.raises(RuntimeError):
+            task.display_next(timeout=5)
+    finally:
+        task.stop()
+    assert shown == []

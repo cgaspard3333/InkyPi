@@ -15,6 +15,9 @@ logger = logging.getLogger(__name__)
 # Upper bound for a web request waiting on a manual refresh (plugins + screenshot + display).
 MANUAL_UPDATE_TIMEOUT = 300
 
+# Manual request meaning "show the next plugin of the active playlist"
+NEXT_IN_PLAYLIST = object()
+
 class RefreshTask:
     """Handles the logic for refreshing the display using a background thread."""
 
@@ -97,7 +100,12 @@ class RefreshTask:
                 if manual_request:
                     logger.info("Manual update requested")
                     refresh_action, _, _ = manual_request
-                    self._perform_refresh(refresh_action, self._get_current_datetime())
+                    current_dt = self._get_current_datetime()
+                    if refresh_action is NEXT_IN_PLAYLIST:
+                        # Resolved here, in the refresh thread, so the playlist index is never
+                        # advanced concurrently by the web thread and the scheduler.
+                        refresh_action = self._next_in_active_playlist(current_dt)
+                    self._perform_refresh(refresh_action, current_dt)
                 else:
                     self._playlist_refresh()
 
@@ -183,6 +191,25 @@ class RefreshTask:
             raise TimeoutError(f"Manual update did not complete within {timeout} seconds")
         if result.get("exception"):
             raise result["exception"]
+
+    def display_next(self, timeout=MANUAL_UPDATE_TIMEOUT):
+        """Shows the next plugin of the active playlist now (like a skip button).
+
+        The cycle timer restarts from now, as after any refresh.
+        """
+        self.manual_update(NEXT_IN_PLAYLIST, timeout=timeout)
+
+    def _next_in_active_playlist(self, current_dt):
+        playlist_manager = self.device_config.get_playlist_manager()
+        playlist = playlist_manager.determine_active_playlist(current_dt)
+        if not playlist:
+            raise RuntimeError("No playlist is active at this time.")
+        playlist_manager.active_playlist = playlist.name
+        plugin_instance = playlist.get_next_plugin()
+        if plugin_instance is None:
+            raise RuntimeError(f"Playlist '{playlist.name}' has no enabled plugin.")
+        logger.info(f"Skipping to next plugin. | playlist: {playlist.name} | plugin_instance: {plugin_instance.name}")
+        return PlaylistRefresh(playlist, plugin_instance)
 
     def signal_config_change(self):
         """Notify the background thread that config has changed (e.g., interval updated)."""
