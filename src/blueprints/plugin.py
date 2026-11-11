@@ -4,6 +4,7 @@ from utils.app_utils import (resolve_path, handle_request_files, parse_form, del
                              collect_upload_paths, referenced_upload_paths)
 from refresh_task import ManualRefresh, PlaylistRefresh
 import io
+import re
 import json
 import os
 import logging
@@ -343,3 +344,28 @@ def _delete_new_uploads(file_map, form):
         paths = paths if isinstance(paths, list) else [paths]
         existing = set(form.getlist(key))
         delete_upload_files([path for path in paths if path and path not in existing])
+
+
+@plugin_bp.route('/plugin_api/<plugin_id>/<action>', methods=['POST'])
+def plugin_api(plugin_id, action):
+    """Lets a plugin's settings page call the plugin (e.g. to validate input live).
+
+    Only methods named api_<action> are reachable; they receive the JSON body and the
+    device config and return a JSON-serializable dict.
+    """
+    if not re.fullmatch(r"[a-z][a-z0-9_]*", action):
+        return jsonify({"error": _("Unknown action")}), 404
+    device_config = current_app.config['DEVICE_CONFIG']
+    plugin_config = device_config.get_plugin(plugin_id)
+    if not plugin_config:
+        return jsonify({"error": _("Plugin '{name}' not found", name=plugin_id)}), 404
+    handler = getattr(get_plugin_instance(plugin_config), f"api_{action}", None)
+    if not callable(handler):
+        return jsonify({"error": _("Unknown action")}), 404
+    try:
+        return jsonify(handler(request.get_json(silent=True) or {}, device_config))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.exception(f"Error in plugin API {plugin_id}/{action}")
+        return jsonify({"error": _("An error occurred: {message}", message=str(e))}), 500

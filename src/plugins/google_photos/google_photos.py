@@ -100,6 +100,55 @@ class GooglePhotos(BasePlugin):
             _write_json(state_path, state)
         return image
 
+    # ------------------------------------------------------------------ settings page API
+
+    MAX_ALBUMS_PER_LOOKUP = 20
+
+    def api_album_info(self, payload, device_config):
+        """Live album details for the settings page: title, photo counts, cover, memories.
+
+        payload: {"urls": [...], "memoryType": "month"|"day", "memoryWindowDays": 3,
+                  "orientationFilter": "any"|"landscape"|"portrait"}
+        Uses the album cache (refreshed every few hours), so known albums answer instantly.
+        """
+        urls = payload.get("urls") or []
+        if not isinstance(urls, list):
+            raise ValueError("urls must be a list")
+        tz = self._timezone(device_config)
+        now = datetime.now(tz)
+        memory_type = payload.get("memoryType") if payload.get("memoryType") in (
+            selection.MEMORY_MONTH, selection.MEMORY_DAY) else selection.MEMORY_MONTH
+        window = int(self._float(payload.get("memoryWindowDays"), 3, allow_zero=True))
+        wanted = payload.get("orientationFilter") if payload.get("orientationFilter") in selection.ORIENTATIONS else "any"
+
+        albums = []
+        for raw in urls[:self.MAX_ALBUMS_PER_LOOKUP]:
+            entry = {"url": raw}
+            link = normalize_album_link(raw) if isinstance(raw, str) else None
+            if not link:
+                entry["error"] = "invalid_link"
+                albums.append(entry)
+                continue
+            try:
+                album = self._get_album(link, DEFAULT_ALBUM_REFRESH_HOURS)
+            except Exception as e:
+                logger.warning(f"Google Photos: cannot read album {self._album_label(link)}: {e}")
+                entry["error"] = "unreadable"
+                albums.append(entry)
+                continue
+            photos = [p for p in album.get("photos", []) if selection.matches_orientation(p, wanted)]
+            entry.update({
+                "link": link,
+                "title": album.get("title", ""),
+                "count": len(photos),
+                "total": len(album.get("photos", [])),
+                "complete": album.get("complete", True),
+                "memories": sum(1 for p in photos if selection.is_memory(p, now, memory_type, window, tz)),
+                "cover": f"{photos[0]['url']}=w160-h100-c" if photos else None,
+            })
+            albums.append(entry)
+        return {"albums": albums}
+
     # ------------------------------------------------------------------ settings
 
     def _options(self, settings, albums_cfg):

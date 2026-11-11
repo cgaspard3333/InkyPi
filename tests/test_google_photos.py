@@ -338,3 +338,50 @@ def test_photo_cache_is_bounded(plugin, monkeypatch):
     with _albums({A: _album("a", 6)}):
         _shown(plugin, SETTINGS, 6)
     assert len(os.listdir(plugin._cache_path("photos"))) == 3
+
+
+# ---------------------------------------------------------------- settings page API
+
+def test_api_album_info(plugin):
+    november = {"title": "Vacances", "complete": True, "photos": [
+        {"id": "a", "url": f"{IMG}a", "width": 4000, "height": 3000, "taken": _ms(2019, 11, 5)},
+        {"id": "b", "url": f"{IMG}b", "width": 3000, "height": 4000, "taken": _ms(2020, 3, 5)},
+    ]}
+
+    def fake_fetch(session, link):
+        if "broken" in link:
+            raise AlbumReadError("no data")
+        return november
+
+    with mock.patch.object(gp_module, "fetch_album", side_effect=fake_fetch), \
+         mock.patch.object(gp_module, "datetime") as fake_dt:
+        fake_dt.now.return_value = TZ.localize(datetime(2026, 11, 11, 9))
+        result = plugin.api_album_info({"urls": [A, "not a link", "https://photos.app.goo.gl/broken"],
+                                        "memoryType": "month", "orientationFilter": "landscape"}, Cfg())
+    ok, invalid, broken = result["albums"]
+    assert (ok["title"], ok["count"], ok["total"], ok["memories"]) == ("Vacances", 1, 2, 1)
+    assert ok["cover"] == f"{IMG}a=w160-h100-c"
+    assert invalid["error"] == "invalid_link" and broken["error"] == "unreadable"
+
+
+def test_api_album_info_rejects_bad_payload(plugin):
+    with pytest.raises(ValueError):
+        plugin.api_album_info({"urls": "x"}, Cfg())
+
+
+def test_plugin_api_route_only_exposes_api_methods(plugin):
+    from flask import Flask
+    from blueprints import plugin as plugin_bp_module
+    app = Flask(__name__)
+    app.register_blueprint(plugin_bp_module.plugin_bp)
+    config = mock.Mock()
+    config.get_plugin.side_effect = lambda pid: {"id": pid} if pid == "google_photos" else None
+    app.config["DEVICE_CONFIG"] = config
+    client = app.test_client()
+    with mock.patch.object(plugin_bp_module, "get_plugin_instance", return_value=plugin), \
+         mock.patch.object(plugin, "api_album_info", return_value={"albums": []}) as api:
+        assert client.post("/plugin_api/google_photos/album_info", json={"urls": []}).get_json() == {"albums": []}
+        assert api.call_args.args[0] == {"urls": []}
+        assert client.post("/plugin_api/google_photos/generate_image", json={}).status_code == 404
+        assert client.post("/plugin_api/google_photos/__init__", json={}).status_code == 404
+        assert client.post("/plugin_api/missing/album_info", json={}).status_code == 404

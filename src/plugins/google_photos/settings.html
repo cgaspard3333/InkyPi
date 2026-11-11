@@ -1,28 +1,58 @@
 <style>
     .form-help { font-size: 0.9em; opacity: 0.8; margin: 6px 0 0; line-height: 1.4; }
-    .album-entry { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin-bottom: 10px; }
-    .album-entry .album-url { flex: 1 1 260px; }
-    .album-entry .album-share { width: 5.5em; flex: 0 0 auto; }
-    .album-entry .album-meta { flex: 1 0 100%; font-size: 0.85em; opacity: 0.75; }
+    .gp-section { flex-direction: column; align-items: stretch; }
+    .gp-section > .form-label { margin-bottom: 4px; }
+    .album-entry {
+        display: grid; grid-template-columns: 80px minmax(0, 1fr) auto auto; gap: 6px 10px;
+        align-items: center; padding: 10px; margin-bottom: 8px;
+        border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-secondary);
+    }
+    .album-cover {
+        width: 80px; height: 50px; border-radius: 6px; overflow: hidden; background: var(--bg-primary);
+        display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: var(--text-secondary);
+    }
+    .album-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .album-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .album-main .album-url { width: 100%; }
+    .album-meta { font-size: 0.85em; color: var(--text-secondary); min-height: 1.2em; }
+    .album-meta .album-title { font-weight: 700; color: var(--text-primary); }
+    .album-meta.error { color: var(--danger); }
+    .album-share-box { display: flex; align-items: center; gap: 4px; }
+    .album-share-box .album-share { width: 4.8em; }
+    .album-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: baseline; }
+    .share-bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--bg-primary); border: 1px solid var(--border-color); }
+    .share-bar span { height: 100%; transition: width 0.25s ease; }
+    .share-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.88em; margin-top: 6px; color: var(--text-primary); }
+    .memory-preview { font-weight: 600; }
+    .memory-preview.warn { color: var(--danger); }
     .inline-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .inline-group .form-input { width: auto; max-width: 100%; }
+    @media (max-width: 640px) {
+        .album-entry { grid-template-columns: 64px minmax(0, 1fr) auto; }
+        .album-cover { width: 64px; height: 40px; }
+        .album-share-box { grid-column: 2 / 3; }
+    }
 </style>
 
-<div class="form-group">
+<div class="form-group gp-section">
     <label class="form-label">{{ _('Shared albums:') }}</label>
     <div id="albumList"></div>
-    <button type="button" class="form-input collapsible" onclick="addAlbumInput('', '')">{{ _('Add Album') }}</button>
-    <div class="inline-group" style="margin-top: 8px;">
-        <label class="check-label">
-            <input type="checkbox" id="albumSharesAuto" onchange="this.value = this.checked ? 'true' : 'false'; refreshShares();">
-            <span>{{ _('Automatic shares (proportional to each album\'s number of photos)') }}</span>
-        </label>
-        <input type="hidden" id="albumSharesAutoValue" name="albumSharesAuto" value="true">
-        <span id="shareTotal" class="form-help"></span>
-    </div>
+    <button type="button" class="form-input collapsible" onclick="addAlbumInput('', '', true)">{{ _('Add Album') }}</button>
     <p class="form-help">
-        {{ _('In Google Photos, open the album, tap Share → Create link and paste the link here (e.g. https://photos.app.goo.gl/...). Anyone with the link can see the album. New photos are picked up automatically. Photo counts appear once an album has been read.') }}
+        {{ _('In Google Photos, open the album, tap Share → Create link and paste the link here (e.g. https://photos.app.goo.gl/...). Anyone with the link can see the album. New photos are picked up automatically.') }}
     </p>
+</div>
+
+<div class="form-group gp-section" id="shareSection">
+    <label class="form-label">{{ _('Share of each album:') }}</label>
+    <label class="check-label">
+        <input type="checkbox" id="albumSharesAuto" onchange="this.value = this.checked ? 'true' : 'false'; refreshShares();">
+        <span>{{ _('Automatic shares (proportional to each album\'s number of photos)') }}</span>
+    </label>
+    <input type="hidden" id="albumSharesAutoValue" name="albumSharesAuto" value="true">
+    <div class="share-bar" id="shareBar" aria-hidden="true" style="margin-top: 8px;"></div>
+    <div class="share-legend" id="shareLegend"></div>
+    <p class="form-help" id="shareSummary"></p>
 </div>
 
 <div class="form-group">
@@ -33,14 +63,15 @@
         <span id="memoryShareLabel"></span>
     </div>
     <div class="inline-group" id="memoryOptions" style="margin-top: 6px;">
-        <select id="memoryType" name="memoryType" class="form-input" onchange="updateMemoryLabel()">
+        <select id="memoryType" name="memoryType" class="form-input" onchange="updateMemoryLabel(); scheduleLookup();">
             <option value="month">{{ _('Photos taken this month (every year)') }}</option>
             <option value="day">{{ _('On this day in previous years') }}</option>
         </select>
         <span id="memoryWindowGroup">&plusmn;
-            <input type="number" id="memoryWindowDays" name="memoryWindowDays" min="0" max="30" value="3"
+            <input type="number" id="memoryWindowDays" name="memoryWindowDays" min="0" max="30" value="3" oninput="scheduleLookup()"
                    class="form-input" style="width: 4.5em;"> {{ _('days') }}</span>
     </div>
+    <p class="form-help memory-preview" id="memoryPreview"></p>
     <p class="form-help">{{ _('Share of photos picked from your memories; the rest are random. When there is no memory, any photo is shown.') }}</p>
 </div>
 
@@ -55,7 +86,7 @@
 
 <div class="form-group">
     <label for="orientationFilter" class="form-label">{{ _('Photos:') }}</label>
-    <select id="orientationFilter" name="orientationFilter" class="form-input">
+    <select id="orientationFilter" name="orientationFilter" class="form-input" onchange="scheduleLookup()">
         <option value="any">{{ _('All orientations') }}</option>
         <option value="landscape">{{ _('Landscape only') }}</option>
         <option value="portrait">{{ _('Portrait only') }}</option>
@@ -121,7 +152,13 @@
 </div>
 
 <script>
+    // Albums already read once (cache), shown immediately; refreshed live from the server
     const albumInfo = {{ album_info | tojson }};
+    const albumApiUrl = "{{ url_for('plugin.plugin_api', plugin_id='google_photos', action='album_info') }}";
+    const SHARE_COLORS = ['#2f7bea', '#e2554f', '#219150', '#d9661f', '#8e44ad', '#d6457f', '#0f8f75', '#4b5563'];
+    const albumData = {};   // raw link text -> server answer
+    let lookupTimer = null;
+    let lookupSeq = 0;
 
     // Same normalization as album_reader.normalize_album_link (server side)
     function normalizeLink(text) {
@@ -137,14 +174,28 @@
         return link;
     }
 
-    function infoFor(url) {
-        return albumInfo[normalizeLink(url)] || null;
+    function rows() {
+        return Array.from(document.querySelectorAll('#albumList .album-entry'));
     }
 
-    function addAlbumInput(url, share) {
+    function dataFor(url) {
+        const value = (url || '').trim();
+        if (!value) return null;
+        if (albumData[value]) return albumData[value];
+        const cached = albumInfo[normalizeLink(value)];
+        return cached ? { title: cached.title, count: cached.count, cached: true } : null;
+    }
+
+    function addAlbumInput(url, share, focus) {
         const wrapper = document.createElement('div');
         wrapper.classList.add('album-entry');
 
+        const cover = document.createElement('div');
+        cover.className = 'album-cover';
+        cover.textContent = '🖼';
+
+        const main = document.createElement('div');
+        main.className = 'album-main';
         const urlInput = document.createElement('input');
         urlInput.type = 'url';
         urlInput.name = 'albumURLs[]';
@@ -152,8 +203,13 @@
         urlInput.required = true;
         urlInput.classList.add('form-input', 'album-url');
         urlInput.value = url;
-        urlInput.addEventListener('input', refreshShares);
+        urlInput.addEventListener('input', () => { refreshShares(); scheduleLookup(); });
+        const meta = document.createElement('div');
+        meta.className = 'album-meta';
+        main.append(urlInput, meta);
 
+        const shareBox = document.createElement('div');
+        shareBox.className = 'album-share-box';
         const shareInput = document.createElement('input');
         shareInput.type = 'number';
         shareInput.name = 'albumShares[]';
@@ -164,54 +220,184 @@
         shareInput.classList.add('form-input', 'album-share');
         shareInput.value = share;
         shareInput.addEventListener('input', refreshShares);
-
         const percent = document.createElement('span');
         percent.textContent = '%';
+        shareBox.append(shareInput, percent);
 
         const removeBtn = document.createElement('button');
         removeBtn.type = 'button';
         removeBtn.textContent = '✕';
+        removeBtn.title = t('Remove');
         removeBtn.classList.add('remove-btn');
-        removeBtn.addEventListener('click', () => { wrapper.remove(); refreshShares(); });
+        removeBtn.addEventListener('click', () => { wrapper.remove(); refreshShares(); updateMemoryPreview(); });
 
-        const meta = document.createElement('div');
-        meta.classList.add('album-meta');
-
-        wrapper.append(urlInput, shareInput, percent, removeBtn, meta);
+        wrapper.append(cover, main, shareBox, removeBtn);
         document.getElementById('albumList').appendChild(wrapper);
+        if (focus) urlInput.focus();
         refreshShares();
+    }
+
+    function scheduleLookup() {
+        clearTimeout(lookupTimer);
+        lookupTimer = setTimeout(lookupAlbums, 500);
+    }
+
+    async function lookupAlbums() {
+        const urls = [...new Set(rows().map(r => r.querySelector('.album-url').value.trim()).filter(Boolean))];
+        if (!urls.length) { refreshShares(); updateMemoryPreview(); return; }
+        const seq = ++lookupSeq;
+        rows().forEach(row => {
+            const value = row.querySelector('.album-url').value.trim();
+            if (value && !albumData[value]) row.dataset.loading = 'true';
+        });
+        refreshShares();
+        try {
+            const response = await fetch(albumApiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    urls,
+                    memoryType: document.getElementById('memoryType').value,
+                    memoryWindowDays: document.getElementById('memoryWindowDays').value,
+                    orientationFilter: document.getElementById('orientationFilter').value,
+                }),
+            });
+            const result = await response.json();
+            if (seq !== lookupSeq) return;  // a newer lookup is running
+            if (!response.ok) throw new Error(result.error || response.status);
+            (result.albums || []).forEach(entry => { albumData[entry.url] = entry; });
+        } catch (error) {
+            if (seq !== lookupSeq) return;
+            urls.forEach(url => { if (!albumData[url]) albumData[url] = { url, error: 'unreadable' }; });
+        }
+        rows().forEach(row => delete row.dataset.loading);
+        refreshShares();
+        updateMemoryPreview();
+    }
+
+    // Effective weights, as computed by the plugin (selection.album_weights)
+    function effectiveShares(auto) {
+        const list = rows().map(row => {
+            const info = dataFor(row.querySelector('.album-url').value);
+            const usable = info && !info.error && info.count > 0;
+            return { row, info, count: usable ? info.count : 0,
+                     manual: Math.max(0, parseFloat(row.querySelector('.album-share').value) || 0) };
+        });
+        const manualTotal = list.reduce((sum, a) => sum + (a.count ? a.manual : 0), 0);
+        const useAuto = auto || manualTotal === 0;
+        const weights = list.map(a => !a.count ? 0 : (useAuto ? a.count : a.manual));
+        const total = weights.reduce((x, y) => x + y, 0);
+        return list.map((a, i) => ({ ...a, share: total ? 100 * weights[i] / total : 0 }));
+    }
+
+    function roundTo(total, values) {
+        // Largest remainder rounding so the parts add up to `total`
+        const raw = values.map(v => v * total / 100);
+        const parts = raw.map(Math.floor);
+        let left = total - parts.reduce((x, y) => x + y, 0);
+        raw.map((v, i) => [v - Math.floor(v), i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => {
+            if (left > 0) { parts[i] += 1; left -= 1; }
+        });
+        return parts;
+    }
+
+    function albumLabel(info, index) {
+        return (info && info.title) || t('Album {n}', { n: index + 1 });
     }
 
     function refreshShares() {
         const auto = document.getElementById('albumSharesAuto').checked;
         document.getElementById('albumSharesAutoValue').value = auto ? 'true' : 'false';
-        const rows = Array.from(document.querySelectorAll('#albumList .album-entry'));
-        const counts = rows.map(row => {
-            const info = infoFor(row.querySelector('.album-url').value);
-            return info ? info.count : 0;
-        });
-        const totalCount = counts.reduce((a, b) => a + b, 0);
-        let total = 0;
-        rows.forEach((row, i) => {
-            const info = infoFor(row.querySelector('.album-url').value);
-            const shareInput = row.querySelector('.album-share');
+        const albums = effectiveShares(auto);
+        const autoValues = roundTo(100, albums.map(a => a.share));
+
+        albums.forEach((a, i) => {
+            const { row, info } = a;
+            const value = row.querySelector('.album-url').value.trim();
             const meta = row.querySelector('.album-meta');
-            meta.textContent = info ? t('{title} — {count} photos', { title: info.title, count: info.count }) : t('Not read yet (photo count shown after the first display)');
+            const cover = row.querySelector('.album-cover');
+            const shareInput = row.querySelector('.album-share');
+            meta.classList.remove('error');
+            meta.replaceChildren();
+            if (!value) {
+                meta.textContent = t('Paste the link of a shared album');
+            } else if (row.dataset.loading && !info) {
+                meta.textContent = t('Reading the album…');
+            } else if (info && info.error) {
+                meta.classList.add('error');
+                meta.textContent = info.error === 'invalid_link'
+                    ? t('This is not a Google Photos shared album link')
+                    : t('Could not read this album: check that link sharing is on');
+            } else if (info) {
+                const swatch = document.createElement('span');
+                swatch.className = 'album-swatch';
+                swatch.style.background = SHARE_COLORS[i % SHARE_COLORS.length];
+                const title = document.createElement('span');
+                title.className = 'album-title';
+                title.textContent = albumLabel(info, i);
+                const detail = document.createElement('span');
+                let text = ' · ' + (info.count === 1 ? t('1 photo') : t('{count} photos', { count: info.count }));
+                if (info.total !== undefined && info.total !== info.count) text += ' ' + t('(of {total})', { total: info.total });
+                detail.textContent = text;
+                meta.append(swatch, title, detail);
+            } else {
+                meta.textContent = t('Reading the album…');
+            }
+            cover.replaceChildren();
+            if (info && info.cover) {
+                const img = document.createElement('img');
+                img.src = info.cover;
+                img.alt = '';
+                img.loading = 'lazy';
+                img.referrerPolicy = 'no-referrer';
+                cover.append(img);
+            } else {
+                cover.textContent = info && info.error ? '⚠' : '🖼';
+            }
             if (auto) {
                 shareInput.readOnly = true;
-                shareInput.value = totalCount ? Math.round(100 * counts[i] / totalCount) : '';
+                shareInput.value = a.count ? autoValues[i] : '';
             } else {
                 shareInput.readOnly = false;
             }
-            total += parseFloat(shareInput.value) || 0;
         });
-        const totalLabel = document.getElementById('shareTotal');
-        if (!auto && rows.length > 1) {
-            totalLabel.textContent = Math.round(total) === 100 ? t('Total: 100%')
-                : t('Total: {total}% (shares are scaled to 100%)', { total: Math.round(total) });
+
+        // Bar, legend and a concrete "out of 10 photos" summary
+        const bar = document.getElementById('shareBar');
+        const legend = document.getElementById('shareLegend');
+        const summary = document.getElementById('shareSummary');
+        bar.replaceChildren();
+        legend.replaceChildren();
+        const shown = albums.map((a, i) => ({ ...a, index: i })).filter(a => a.share > 0);
+        shown.forEach(a => {
+            const color = SHARE_COLORS[a.index % SHARE_COLORS.length];
+            const seg = document.createElement('span');
+            seg.style.width = a.share + '%';
+            seg.style.background = color;
+            seg.title = `${albumLabel(a.info, a.index)} · ${Math.round(a.share)}%`;
+            bar.append(seg);
+            const item = document.createElement('span');
+            const dot = document.createElement('span');
+            dot.className = 'album-swatch';
+            dot.style.background = color;
+            item.append(dot, document.createTextNode(`${albumLabel(a.info, a.index)} · ${Math.round(a.share)} %`));
+            legend.append(item);
+        });
+        if (shown.length > 1) {
+            const counts = roundTo(10, shown.map(a => a.share));
+            summary.textContent = t('Out of 10 photos shown: {details}.', {
+                details: shown.map((a, k) => t('~{n} from “{album}”', { n: counts[k], album: albumLabel(a.info, a.index) })).join(', ')
+            });
+        } else if (shown.length === 1) {
+            summary.textContent = t('All photos come from “{album}”.', { album: albumLabel(shown[0].info, shown[0].index) });
         } else {
-            totalLabel.textContent = '';
+            summary.textContent = t('The share of each album appears once its link has been read.');
         }
+        const manualSum = albums.reduce((sum, a) => sum + (a.count ? a.manual : 0), 0);
+        if (!auto && shown.length > 1 && Math.round(manualSum) !== 100) {
+            summary.textContent += ' ' + t('Your percentages add up to {total}% and are scaled to 100%.', { total: Math.round(manualSum) });
+        }
+        document.getElementById('shareSection').style.display = rows().length > 1 ? '' : 'none';
     }
 
     function updateMemoryLabel() {
@@ -222,6 +408,37 @@
         document.getElementById('memoryOptions').style.display = share === 0 ? 'none' : '';
         document.getElementById('memoryWindowGroup').style.display =
             document.getElementById('memoryType').value === 'day' ? '' : 'none';
+        updateMemoryPreview();
+    }
+
+    function updateMemoryPreview() {
+        const preview = document.getElementById('memoryPreview');
+        const share = parseInt(document.getElementById('memoryShare').value, 10);
+        preview.classList.remove('warn');
+        if (share === 0) { preview.textContent = ''; return; }
+        const albums = rows().map((row, i) => ({ info: dataFor(row.querySelector('.album-url').value), index: i }))
+            .filter(a => a.info && !a.info.error && a.info.memories !== undefined);
+        if (!albums.length) { preview.textContent = ''; return; }
+        const total = albums.reduce((sum, a) => sum + a.info.memories, 0);
+        const byDay = document.getElementById('memoryType').value === 'day';
+        const n = document.getElementById('memoryWindowDays').value || 0;
+        if (!total) {
+            preview.classList.add('warn');
+            preview.textContent = byDay
+                ? t('No photo around this day (±{n} days, previous years) for now: photos will be picked at random.', { n })
+                : t('No photo taken this month for now: photos will be picked at random.');
+            return;
+        }
+        let text;
+        if (byDay) {
+            text = total === 1 ? t('1 photo around this day (±{n} days, previous years)', { n })
+                               : t('{count} photos around this day (±{n} days, previous years)', { count: total, n });
+        } else {
+            text = total === 1 ? t('1 photo taken this month') : t('{count} photos taken this month', { count: total });
+        }
+        const details = albums.length > 1
+            ? ' (' + albums.map(a => `${albumLabel(a.info, a.index)} : ${a.info.memories}`).join(', ') + ')' : '';
+        preview.textContent = text + details;
     }
 
     function updateBackgroundVisibility() {
@@ -246,7 +463,7 @@
         const shares = s['albumShares[]'] || [];
 
         setCheckbox('albumSharesAuto', s.albumSharesAuto === undefined ? 'true' : s.albumSharesAuto);
-        urls.forEach((url, i) => addAlbumInput(url, shares[i] || ''));
+        urls.forEach((url, i) => addAlbumInput(url, shares[i] || '', false));
 
         document.getElementById('memoryShare').value = s.memoryShare || '0';
         document.getElementById('memoryType').value = s.memoryType || 'month';
@@ -268,5 +485,6 @@
         updateMemoryLabel();
         updateBackgroundVisibility();
         updateCaptionVisibility();
+        lookupAlbums();  // titles, counts and memories of the saved albums
     });
 </script>
