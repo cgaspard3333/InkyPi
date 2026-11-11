@@ -1,22 +1,51 @@
 <style>
     .form-help { font-size: 0.9em; opacity: 0.8; margin: 6px 0 0; line-height: 1.4; }
-    .album-entry { display: flex; gap: 8px; align-items: center; }
-    .album-entry .form-input { flex: 1; }
+    .album-entry { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin-bottom: 10px; }
+    .album-entry .album-url { flex: 1 1 260px; }
+    .album-entry .album-share { width: 5.5em; flex: 0 0 auto; }
+    .album-entry .album-meta { flex: 1 0 100%; font-size: 0.85em; opacity: 0.75; }
+    .inline-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .inline-group .form-input { width: auto; }
 </style>
 
 <div class="form-group">
     <label class="form-label">Shared albums:</label>
     <div id="albumList"></div>
-    <button type="button" class="form-input collapsible" onclick="addAlbumInput('')">Add Album</button>
+    <button type="button" class="form-input collapsible" onclick="addAlbumInput('', '')">Add Album</button>
+    <div class="inline-group" style="margin-top: 8px;">
+        <input type="checkbox" id="albumSharesAuto" onchange="this.value = this.checked ? 'true' : 'false'; refreshShares();">
+        <input type="hidden" id="albumSharesAutoValue" name="albumSharesAuto" value="true">
+        <label for="albumSharesAuto">Automatic shares (proportional to each album's number of photos)</label>
+        <span id="shareTotal" class="form-help"></span>
+    </div>
     <p class="form-help">
-        In Google Photos, open the album, tap <em>Share</em> &rarr; <em>Create link</em> (or turn on
-        <em>Link sharing</em>) and paste the link here, e.g. <code>https://photos.app.goo.gl/...</code>.
-        Anyone with the link can see the album. New photos added to the album are picked up automatically.
+        In Google Photos, open the album, tap <em>Share</em> &rarr; <em>Create link</em> and paste the link here
+        (e.g. <code>https://photos.app.goo.gl/...</code>). Anyone with the link can see the album.
+        New photos are picked up automatically. Photo counts appear once an album has been read.
     </p>
 </div>
 
 <div class="form-group">
-    <label for="order" class="form-label">Order:</label>
+    <label for="memoryShare" class="form-label">Memories:</label>
+    <div class="inline-group">
+        <input type="range" id="memoryShare" name="memoryShare" min="0" max="100" step="5" value="0"
+               oninput="updateMemoryLabel()">
+        <span id="memoryShareLabel"></span>
+    </div>
+    <div class="inline-group" id="memoryOptions" style="margin-top: 6px;">
+        <select id="memoryType" name="memoryType" class="form-input" onchange="updateMemoryLabel()">
+            <option value="month">Photos taken this month (every year)</option>
+            <option value="day">On this day in previous years</option>
+        </select>
+        <span id="memoryWindowGroup">&plusmn;
+            <input type="number" id="memoryWindowDays" name="memoryWindowDays" min="0" max="30" value="3"
+                   class="form-input" style="width: 4.5em;"> days</span>
+    </div>
+    <p class="form-help">Share of photos picked from your memories; the rest are random. When there is no memory, any photo is shown.</p>
+</div>
+
+<div class="form-group">
+    <label for="order" class="form-label">Order (other photos):</label>
     <select id="order" name="order" class="form-input">
         <option value="shuffle">Shuffle (each photo once before repeating)</option>
         <option value="newest">Newest first</option>
@@ -25,21 +54,54 @@
 </div>
 
 <div class="form-group">
+    <label for="orientationFilter" class="form-label">Photos:</label>
+    <select id="orientationFilter" name="orientationFilter" class="form-input">
+        <option value="any">All orientations</option>
+        <option value="landscape">Landscape only</option>
+        <option value="portrait">Portrait only</option>
+    </select>
+    <div class="inline-group" style="margin-top: 6px;">
+        <input type="checkbox" id="pairPhotos" name="pairPhotos" onclick="this.value=this.checked ? 'true' : 'false';">
+        <label for="pairPhotos">Show two portrait photos side by side (landscape screen) / two landscape photos stacked (portrait screen)</label>
+    </div>
+</div>
+
+<div class="form-group">
     <label for="fitMode" class="form-label">Framing:</label>
     <select id="fitMode" name="fitMode" class="form-input" onchange="updateBackgroundVisibility()">
         <option value="fit">Fit whole photo (with background)</option>
         <option value="fill">Fill screen (crop)</option>
     </select>
+    <div class="form-group" id="backgroundGroup" style="margin-top: 6px;">
+        <input type="radio" id="backgroundBlur" name="backgroundOption" value="blur">
+        <label for="backgroundBlur">Blurred background</label>
+        <input type="radio" id="backgroundColorOption" name="backgroundOption" value="color">
+        <label for="backgroundColorOption">Colour</label>
+        <input type="color" id="backgroundColor" name="backgroundColor" value="#ffffff" class="color-picker"/>
+    </div>
 </div>
 
-<div class="form-group" id="backgroundGroup">
-    <label class="form-label">Background:</label>
-    <div class="form-group">
-        <input type="radio" id="backgroundBlur" name="backgroundOption" value="blur">
-        <label for="backgroundBlur">Blur</label>
-        <input type="radio" id="backgroundColorOption" name="backgroundOption" value="color">
-        <label for="backgroundColorOption">Color</label>
-        <input type="color" id="backgroundColor" name="backgroundColor" value="#ffffff" class="color-picker"/>
+<div class="form-group">
+    <label for="caption" class="form-label">Caption:</label>
+    <div class="inline-group">
+        <select id="caption" name="caption" class="form-input" onchange="updateCaptionVisibility()">
+            <option value="none">None</option>
+            <option value="date">Date</option>
+            <option value="date_album">Date and album</option>
+        </select>
+        <span id="captionOptions" class="inline-group">
+            <select id="captionPosition" name="captionPosition" class="form-input">
+                <option value="bottom_left">Bottom left</option>
+                <option value="bottom_right">Bottom right</option>
+            </select>
+            <select id="captionLanguage" name="captionLanguage" class="form-input">
+                {% for code, name in languages.items() %}
+                <option value="{{ code }}">{{ name }}</option>
+                {% endfor %}
+            </select>
+            <input type="checkbox" id="captionYearsAgo" name="captionYearsAgo" onclick="this.value=this.checked ? 'true' : 'false';">
+            <label for="captionYearsAgo">"N years ago"</label>
+        </span>
     </div>
 </div>
 
@@ -55,26 +117,107 @@
 </div>
 
 <script>
-    function addAlbumInput(url) {
+    const albumInfo = {{ album_info | tojson }};
+
+    // Same normalization as album_reader.normalize_album_link (server side)
+    function normalizeLink(text) {
+        let link = (text || '').trim();
+        if (!link) return '';
+        if (!/^https?:\/\//i.test(link)) link = 'https://' + link.replace(/^\/+/, '');
+        try {
+            const u = new URL(link);
+            const host = u.hostname.toLowerCase();
+            if (host === 'photos.app.goo.gl' || host === 'goo.gl') return `https://${host}${u.pathname}`;
+            if (host === 'photos.google.com') return `https://${host}${u.pathname}${u.search}`;
+        } catch (e) { /* not a URL */ }
+        return link;
+    }
+
+    function infoFor(url) {
+        return albumInfo[normalizeLink(url)] || null;
+    }
+
+    function addAlbumInput(url, share) {
         const wrapper = document.createElement('div');
-        wrapper.classList.add('form-group', 'album-entry');
+        wrapper.classList.add('album-entry');
 
         const urlInput = document.createElement('input');
         urlInput.type = 'url';
         urlInput.name = 'albumURLs[]';
         urlInput.placeholder = 'https://photos.app.goo.gl/...';
         urlInput.required = true;
-        urlInput.classList.add('form-input');
+        urlInput.classList.add('form-input', 'album-url');
         urlInput.value = url;
+        urlInput.addEventListener('input', refreshShares);
+
+        const shareInput = document.createElement('input');
+        shareInput.type = 'number';
+        shareInput.name = 'albumShares[]';
+        shareInput.min = '0';
+        shareInput.max = '100';
+        shareInput.step = '1';
+        shareInput.title = 'Share of photos taken from this album (%)';
+        shareInput.classList.add('form-input', 'album-share');
+        shareInput.value = share;
+        shareInput.addEventListener('input', refreshShares);
+
+        const percent = document.createElement('span');
+        percent.textContent = '%';
 
         const removeBtn = document.createElement('button');
         removeBtn.type = 'button';
         removeBtn.textContent = '✕';
         removeBtn.classList.add('remove-btn');
-        removeBtn.addEventListener('click', () => wrapper.remove());
+        removeBtn.addEventListener('click', () => { wrapper.remove(); refreshShares(); });
 
-        wrapper.append(urlInput, removeBtn);
+        const meta = document.createElement('div');
+        meta.classList.add('album-meta');
+
+        wrapper.append(urlInput, shareInput, percent, removeBtn, meta);
         document.getElementById('albumList').appendChild(wrapper);
+        refreshShares();
+    }
+
+    function refreshShares() {
+        const auto = document.getElementById('albumSharesAuto').checked;
+        document.getElementById('albumSharesAutoValue').value = auto ? 'true' : 'false';
+        const rows = Array.from(document.querySelectorAll('#albumList .album-entry'));
+        const counts = rows.map(row => {
+            const info = infoFor(row.querySelector('.album-url').value);
+            return info ? info.count : 0;
+        });
+        const totalCount = counts.reduce((a, b) => a + b, 0);
+        let total = 0;
+        rows.forEach((row, i) => {
+            const info = infoFor(row.querySelector('.album-url').value);
+            const shareInput = row.querySelector('.album-share');
+            const meta = row.querySelector('.album-meta');
+            meta.textContent = info ? `${info.title} — ${info.count} photos` : 'Not read yet (photo count shown after the first display)';
+            if (auto) {
+                shareInput.readOnly = true;
+                shareInput.value = totalCount ? Math.round(100 * counts[i] / totalCount) : '';
+            } else {
+                shareInput.readOnly = false;
+            }
+            total += parseFloat(shareInput.value) || 0;
+        });
+        const totalLabel = document.getElementById('shareTotal');
+        if (!auto && rows.length > 1) {
+            totalLabel.textContent = Math.round(total) === 100 ? 'Total: 100%'
+                : `Total: ${Math.round(total)}% (shares are scaled to 100%)`;
+        } else {
+            totalLabel.textContent = '';
+        }
+    }
+
+    function updateMemoryLabel() {
+        const share = parseInt(document.getElementById('memoryShare').value, 10);
+        const label = share === 0 ? 'Off (all photos at random)'
+            : share === 100 ? 'Memories only' : `${share}% memories, ${100 - share}% random`;
+        document.getElementById('memoryShareLabel').textContent = label;
+        document.getElementById('memoryOptions').style.display = share === 0 ? 'none' : '';
+        document.getElementById('memoryWindowGroup').style.display =
+            document.getElementById('memoryType').value === 'day' ? '' : 'none';
     }
 
     function updateBackgroundVisibility() {
@@ -82,22 +225,44 @@
         document.getElementById('backgroundGroup').style.display = fill ? 'none' : '';
     }
 
+    function updateCaptionVisibility() {
+        document.getElementById('captionOptions').style.display =
+            document.getElementById('caption').value === 'none' ? 'none' : '';
+    }
+
+    function setCheckbox(id, value) {
+        const box = document.getElementById(id);
+        box.checked = value === 'true' || value === true;
+        box.value = box.checked ? 'true' : 'false';
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
-        let albums = [''];
-        let backgroundOption = 'blur';
-        if (loadPluginSettings) {
-            albums = pluginSettings['albumURLs[]'] && pluginSettings['albumURLs[]'].length
-                ? pluginSettings['albumURLs[]'] : [''];
-            document.getElementById('order').value = pluginSettings.order || 'shuffle';
-            document.getElementById('fitMode').value = pluginSettings.fitMode || 'fit';
-            document.getElementById('backgroundColor').value = pluginSettings.backgroundColor || '#ffffff';
-            document.getElementById('albumRefreshHours').value = pluginSettings.albumRefreshHours || '3';
-            backgroundOption = pluginSettings.backgroundOption || 'blur';
-        } else {
-            document.getElementById('albumRefreshHours').value = '3';
-        }
-        albums.forEach(url => addAlbumInput(url));
+        const s = loadPluginSettings ? pluginSettings : {};
+        const urls = s['albumURLs[]'] && s['albumURLs[]'].length ? s['albumURLs[]'] : [''];
+        const shares = s['albumShares[]'] || [];
+
+        setCheckbox('albumSharesAuto', s.albumSharesAuto === undefined ? 'true' : s.albumSharesAuto);
+        urls.forEach((url, i) => addAlbumInput(url, shares[i] || ''));
+
+        document.getElementById('memoryShare').value = s.memoryShare || '0';
+        document.getElementById('memoryType').value = s.memoryType || 'month';
+        document.getElementById('memoryWindowDays').value = s.memoryWindowDays || '3';
+        document.getElementById('order').value = s.order || 'shuffle';
+        document.getElementById('orientationFilter').value = s.orientationFilter || 'any';
+        setCheckbox('pairPhotos', s.pairPhotos);
+        document.getElementById('fitMode').value = s.fitMode || 'fit';
+        document.getElementById('backgroundColor').value = s.backgroundColor || '#ffffff';
+        const backgroundOption = s.backgroundOption || 'blur';
         document.querySelector(`input[name="backgroundOption"][value="${backgroundOption}"]`).checked = true;
+        document.getElementById('caption').value = s.caption || 'none';
+        document.getElementById('captionPosition').value = s.captionPosition || 'bottom_left';
+        document.getElementById('captionLanguage').value = s.captionLanguage || 'fr';
+        setCheckbox('captionYearsAgo', s.captionYearsAgo === undefined ? 'true' : s.captionYearsAgo);
+        document.getElementById('albumRefreshHours').value = s.albumRefreshHours || '3';
+
+        refreshShares();
+        updateMemoryLabel();
         updateBackgroundVisibility();
+        updateCaptionVisibility();
     });
 </script>
