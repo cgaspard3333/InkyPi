@@ -1602,3 +1602,4 @@ button, input, select, textarea, optgroup { font-family: inherit; }
 .preview-frame img.updating { opacity: 0.5; transition: opacity 0.2s; }
 .preview-frame img { display: block; max-width: 100%; height: auto; background: #fff; }
 .preview-status { text-align: center; color: var(--text-secondary); padding: 24px; }
+.form-group[hidden] { display: none; }
