@@ -1,5 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app, render_template, send_from_directory, send_file
 from plugins.plugin_registry import get_plugin_instance
+from utils import eink
+from utils.image_utils import apply_image_enhancement
 from utils.app_utils import (resolve_path, handle_request_files, parse_form, delete_upload_files,
                              collect_upload_paths, referenced_upload_paths)
 from refresh_task import ManualRefresh, PlaylistRefresh
@@ -75,6 +77,11 @@ def plugin_page(plugin_id):
                 template_params["refresh_settings"] = plugin_instance.refresh
 
             template_params["playlists"] = playlist_manager.get_playlist_names()
+            # Colour rendering: what "automatic" means for this plugin, and whether the
+            # display has a known palette (graphics mode and e-ink simulation available)
+            template_params["auto_colour_mode"] = eink.resolve_mode(plugin_id, {})
+            display_manager = current_app.config.get('DISPLAY_MANAGER')
+            template_params["has_palette"] = bool(display_manager and display_manager.get_palette())
         except Exception as e:
             logger.exception("EXCEPTION CAUGHT: " + str(e))
             return jsonify({"error": _("An error occurred: {message}", message=str(e))}), 500
@@ -278,7 +285,8 @@ def update_now():
 
             plugin = get_plugin_instance(plugin_config)
             image = plugin.generate_image(plugin_settings, device_config)
-            display_manager.display_image(image, image_settings=plugin_config.get("image_settings", []))
+            display_manager.display_image(image, image_settings=plugin_config.get("image_settings", []),
+                                          colour_mode=eink.resolve_mode(plugin_id, plugin_settings))
 
     except TimeoutError as e:
         # The refresh thread may still be rendering from the uploaded files: keep them.
@@ -319,9 +327,18 @@ def preview_image():
             return jsonify({"error": _("Plugin '{name}' not found", name=plugin_id)}), 404
 
         plugin = get_plugin_instance(plugin_config)
+        simulate = plugin_settings.pop("simulateDisplay", None) == "true"
         image = plugin.generate_image(plugin_settings, device_config)
         if image is None:
             return jsonify({"error": _("The plugin did not produce an image")}), 500
+        display_manager = current_app.config.get('DISPLAY_MANAGER')
+        palette = display_manager.get_palette() if display_manager else None
+        if simulate and palette:
+            # What the panel will show: same enhancement and colour mode as a real refresh
+            image_settings = device_config.get_config("image_settings", default={}) or {}
+            image = apply_image_enhancement(image.convert("RGB"), image_settings)
+            image = eink.simulate(image, palette, eink.resolve_mode(plugin_id, plugin_settings),
+                                  float(image_settings.get("inky_saturation", 0.5)))
 
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")

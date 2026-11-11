@@ -82,3 +82,19 @@ def test_preview_deletes_new_uploads_but_keeps_existing(setup):
     assert str(existing) in used and len(used) == 2       # both images used for the render
     assert existing.exists()                               # saved image kept
     assert os.listdir(upload_dir) == ["abc_old.png"]       # temporary upload removed
+
+
+def test_preview_can_simulate_the_display(setup):
+    from utils import eink
+    client, fake, _, display = setup
+    display.get_palette.return_value = eink.SPECTRA6
+    app_config = client.application.config["DEVICE_CONFIG"]
+    app_config.get_config.return_value = {}
+    response = client.post("/preview_image", data={"plugin_id": "demo", "simulateDisplay": "true",
+                                                   "colourMode": "graphics"})
+    assert response.status_code == 200
+    image = Image.open(io.BytesIO(response.data)).convert("RGB")
+    # pure red is shown as the measured red ink, not as (255, 0, 0)
+    assert image.getpixel((10, 10)) != (255, 0, 0)
+    assert "simulateDisplay" not in fake.calls[-1]
+    display.display_image.assert_not_called()

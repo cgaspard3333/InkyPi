@@ -3,6 +3,7 @@ import json
 import logging
 
 from utils.image_utils import resize_image, change_orientation, apply_image_enhancement
+from utils import eink
 from display.mock_display import MockDisplay
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,19 @@ class DisplayManager:
         else:
             raise ValueError(f"Unsupported display type: {display_type}")
 
-    def display_image(self, image, image_settings=[]):
+    def get_palette(self):
+        return self.display.get_palette() if hasattr(self, "display") else None
+
+    def prepare_colours(self, image, colour_mode):
+        """Applies the colour rendering mode for limited-palette displays (see utils.eink)."""
+        palette = self.get_palette()
+        if colour_mode != eink.GRAPHICS or not palette:
+            return image
+        saturation = self.device_config.get_config("image_settings", default={}).get("inky_saturation", 0.5)
+        indices = eink.render_indices(image, palette, eink.GRAPHICS, float(saturation))
+        return eink.to_pure_palette_image(indices, palette)
+
+    def display_image(self, image, image_settings=[], colour_mode=eink.PHOTO):
         
         """
         Delegates image rendering to the appropriate display instance.
@@ -79,6 +92,7 @@ class DisplayManager:
         image = resize_image(image, self.device_config.get_resolution(), image_settings)
         if self.device_config.get_config("inverted_image"): image = image.rotate(180)
         image = apply_image_enhancement(image, self.device_config.get_config("image_settings"))
+        image = self.prepare_colours(image, colour_mode)
 
         # Pass to the concrete instance to render to the device.
         self.display.display_image(image, image_settings)

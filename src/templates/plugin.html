@@ -149,6 +149,12 @@
         let previewUrl = null;
         let previewRequest = 0;
 
+        function syncColourMode(value) {
+            const field = document.getElementById('colourMode');
+            if (field) field.value = value;
+            showPreview();
+        }
+
         function buildSettingsFormData() {
             const formData = new FormData(document.getElementById('settingsForm'));
             Object.keys(uploadedFiles).forEach(key => {
@@ -159,6 +165,10 @@
 
         async function showPreview() {
             const requestId = ++previewRequest;
+            const simulateBox = document.getElementById('simulateDisplay');
+            const modeField = document.getElementById('colourMode');
+            const previewMode = document.getElementById('previewColourMode');
+            if (modeField && previewMode) previewMode.value = modeField.value;
             const img = document.getElementById('previewImage');
             const status = document.getElementById('previewStatus');
             const statusText = document.getElementById('previewStatusText');
@@ -171,7 +181,9 @@
             sendButton.disabled = true;
             const started = performance.now();
             try {
-                const response = await fetch('{{ url_for("plugin.preview_image") }}', { method: 'POST', body: buildSettingsFormData() });
+                const previewData = buildSettingsFormData();
+                if (simulateBox) previewData.append('simulateDisplay', simulateBox.checked ? 'true' : 'false');
+                const response = await fetch('{{ url_for("plugin.preview_image") }}', { method: 'POST', body: previewData });
                 if (requestId !== previewRequest) return;  // a newer preview was requested
                 if (!response.ok) {
                     let result = {};
@@ -279,6 +291,14 @@
                 hiddenElement.remove();
             }
         }
+
+        // colour rendering mode of this instance
+        document.addEventListener('DOMContentLoaded', () => {
+            const modeField = document.getElementById('colourMode');
+            if (modeField && loadPluginSettings && ['photo', 'graphics'].includes(pluginSettings.colourMode)) {
+                modeField.value = pluginSettings.colourMode;
+            }
+        });
 
         // populate form values from plugin settings
         document.addEventListener('DOMContentLoaded', () => {
@@ -391,6 +411,19 @@
         <form id="settingsForm" class="settings-form" onsubmit="return false;">
             <div class="settings-container">
                 {% include settings_template %}
+
+                {% if has_palette %}
+                <!-- How colours are converted for the e-paper palette -->
+                <div class="form-group colour-mode-group">
+                    <label for="colourMode" class="form-label">{{ _('Colours on the display:') }}</label>
+                    <select id="colourMode" name="colourMode" class="form-input">
+                        <option value="auto">{{ _('Automatic') }} ({{ _('Photo') if auto_colour_mode == 'photo' else _('Graphics') }})</option>
+                        <option value="photo">{{ _('Photo: smooth shades (dithering)') }}</option>
+                        <option value="graphics">{{ _('Graphics: vivid colours, crisp text') }}</option>
+                    </select>
+                    <p class="form-help" style="flex-basis: 100%;">{{ _('Graphics mode adapts colours to the inks of the display (pastel colours become readable, text stays black). Use Preview with “Simulate the e-ink display” to compare.') }}</p>
+                </div>
+                {% endif %}
 
                 <!-- Collapsible Style Settings Section -->
                 {% if style_settings %}
@@ -506,6 +539,19 @@
         <div class="modal-content preview-modal-content">
             <button type="button" class="close-button" onclick="closePreview()" aria-label="{{ _('Close') }}">×</button>
             <h2 id="previewModalTitle">{{ _('Preview') }}</h2>
+            {% if has_palette %}
+            <div class="preview-options">
+                <label class="check-label">
+                    <input type="checkbox" id="simulateDisplay" checked onchange="showPreview()">
+                    <span>{{ _('Simulate the e-ink display') }}</span>
+                </label>
+                <select id="previewColourMode" class="form-input" onchange="syncColourMode(this.value)" aria-label="{{ _('Colours on the display:') }}">
+                    <option value="auto">{{ _('Automatic') }} ({{ _('Photo') if auto_colour_mode == 'photo' else _('Graphics') }})</option>
+                    <option value="photo">{{ _('Photo') }}</option>
+                    <option value="graphics">{{ _('Graphics') }}</option>
+                </select>
+            </div>
+            {% endif %}
             <div class="preview-frame" id="previewFrame">
                 <div class="preview-status" id="previewStatus">
                     <div class="loading-indicator" style="display:block; margin: 0 auto 10px;"></div>

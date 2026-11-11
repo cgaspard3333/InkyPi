@@ -1,0 +1,192 @@
+"""Colour rendering for limited-palette e-paper displays (e.g. Inky Spectra 6).
+
+Two rendering modes:
+
+- "photo": the driver's own conversion (Floyd-Steinberg dithering towards a palette
+  blended by the "Inky Driver Saturation" setting). Best for photographs.
+- "graphics": tuned for UI-like images (weather, calendar, text):
+    1. colours are adapted to the inks that will render them: coloured pixels are
+       saturated, and darkened according to how dark the matching ink really is
+       (measured palette) - pastel blue becomes a readable blue, yellow stays light;
+    2. pixels already close to an ink are snapped onto it (crisp text and backgrounds,
+       no red fringes from dithered anti-aliasing);
+    3. ordered (Bayer) dithering: regular patterns instead of noisy error diffusion on
+       flat areas.
+  The result only contains the display's pure colours, so the driver sends it as is.
+
+A display palette is described by:
+    pure:     the colours the driver expects (what each ink is called in RGB)
+    measured: what each ink actually looks like (used to adapt colours and to simulate)
+"""
+
+import colorsys
+import inspect
+import logging
+import re
+
+import numpy as np
+from PIL import Image
+
+logger = logging.getLogger(__name__)
+
+PHOTO, GRAPHICS, AUTO = "photo", "graphics", "auto"
+MODES = (AUTO, PHOTO, GRAPHICS)
+
+# Plugins that show photographs: everything else is rendered as graphics in auto mode.
+PHOTO_PLUGINS = {"image_folder", "image_upload", "image_album", "image_url", "google_photos",
+                 "unsplash", "apod", "wpotd", "ai_image", "comic", "screenshot", "newspaper",
+                 "clock"}  # clock faces are mostly gradients
+
+# Inky Spectra 6 (E673 etc.) palettes, used to simulate a display in development
+SPECTRA6 = {
+    "pure": [[0, 0, 0], [255, 255, 255], [255, 255, 0], [255, 0, 0], [0, 0, 255], [0, 255, 0]],
+    "measured": [[0, 0, 0], [161, 164, 165], [208, 190, 71], [156, 72, 75], [61, 59, 94], [58, 91, 70]],
+}
+
+_BAYER8 = (np.array([
+    [0, 32, 8, 40, 2, 34, 10, 42], [48, 16, 56, 24, 50, 18, 58, 26],
+    [12, 44, 4, 36, 14, 46, 6, 38], [60, 28, 52, 20, 62, 30, 54, 22],
+    [3, 35, 11, 43, 1, 33, 9, 41], [51, 19, 59, 27, 49, 17, 57, 25],
+    [15, 47, 7, 39, 13, 45, 5, 37], [63, 31, 55, 23, 61, 29, 53, 21]], dtype=np.float32) + 0.5) / 64.0 - 0.5
+
+
+def resolve_mode(plugin_id, settings):
+    """Rendering mode of a plugin instance: explicit setting, else by plugin type."""
+    mode = (settings or {}).get("colourMode", AUTO)
+    if mode in (PHOTO, GRAPHICS):
+        return mode
+    return PHOTO if plugin_id in PHOTO_PLUGINS else GRAPHICS
+
+
+def palette_from_inky(inky_display):
+    """Describes an Inky driver's palette, or None if it has no pure-colour (no dither) path.
+
+    Spectra drivers skip their own dithering for palette images with exactly N colours
+    ("if len(image.palette.colors) == N"); that N and the driver's palettes are read
+    from the driver itself.
+    """
+    module = inspect.getmodule(type(inky_display))
+    pure = getattr(module, "DESATURATED_PALETTE", None)
+    measured = getattr(module, "SATURATED_PALETTE", None)
+    try:
+        source = inspect.getsource(type(inky_display).set_image)
+    except (AttributeError, OSError, TypeError):
+        return None
+    match = re.search(r"len\(image\.palette\.colors\)\s*==\s*(\d+)", source)
+    if not (pure and measured and match):
+        return None
+    count = int(match.group(1))
+    if len(pure) < count or len(measured) < count:
+        return None
+    return {"pure": [list(c) for c in pure[:count]], "measured": [list(c) for c in measured[:count]]}
+
+
+def blended(palette, saturation):
+    """The driver's quantization palette for a given 'saturation' (pure <-> measured)."""
+    pure = np.array(palette["pure"], dtype=np.float32)
+    measured = np.array(palette["measured"], dtype=np.float32)
+    return measured * saturation + pure * (1.0 - saturation)
+
+
+def _white_index(palette):
+    pure = np.array(palette["pure"])
+    return int(np.argmax(pure.sum(axis=1)))
+
+
+def adapt_colours(image, palette, strength=0.4, boost=1.7, min_chroma=24):
+    """Saturate coloured pixels and darken them as much as the ink that will render them
+    is darker than the paper. Neutral pixels (white, greys, black) are left unchanged."""
+    measured = np.array(palette["measured"], dtype=np.float32)
+    white = measured[_white_index(palette)]
+    white_luma = float(white @ [0.299, 0.587, 0.114]) or 255.0
+
+    # Hue and relative darkness of each chromatic ink
+    inks = []
+    for rgb in measured:
+        h, s, v = colorsys.rgb_to_hsv(*(rgb / 255.0))
+        if s < 0.15:
+            continue  # black / white
+        darkness = max(0.0, 1.0 - float(rgb @ [0.299, 0.587, 0.114]) / white_luma)
+        inks.append((h * 360.0, darkness))
+    if not inks:
+        return image
+
+    hsv = np.asarray(image.convert("HSV"), dtype=np.float32) / 255.0
+    rgb = np.asarray(image.convert("RGB"), dtype=np.float32)
+    chroma = rgb.max(-1) - rgb.min(-1)
+    weight = np.clip((chroma - min_chroma) / 40.0, 0, 1)
+
+    # Darkness expected at each hue: interpolated between the two closest inks
+    hue = hsv[..., 0] * 360.0
+    ink_hues = np.array([h for h, _ in inks], dtype=np.float32)
+    ink_dark = np.array([d for _, d in inks], dtype=np.float32)
+    dist = np.abs(((hue[..., None] - ink_hues[None, None, :]) + 180.0) % 360.0 - 180.0)
+    inv = 1.0 / (dist + 1.0) ** 2
+    darkness = (inv * ink_dark).sum(-1) / inv.sum(-1)
+
+    hsv[..., 1] = np.clip(hsv[..., 1] * (1 + (boost - 1) * weight), 0, 1)
+    hsv[..., 2] = hsv[..., 2] * (1 - strength * darkness * weight * 1.6)
+    return Image.fromarray((np.clip(hsv, 0, 1) * 255).astype(np.uint8), "HSV").convert("RGB")
+
+
+def _snap(rgb, quant_palette, threshold=48):
+    """Pixels within `threshold` of a quantization colour become exactly that colour."""
+    dist = ((rgb[:, :, None, :] - quant_palette[None, None, :, :]) ** 2).sum(-1)
+    nearest = dist.argmin(-1)
+    close = dist.min(-1) <= threshold ** 2
+    out = rgb.copy()
+    out[close] = quant_palette[nearest[close]]
+    return out
+
+
+def _neutral_inks(palette):
+    """Indices of the achromatic inks (black, white): greys are dithered with these only."""
+    measured = np.array(palette["measured"], dtype=np.float32)
+    return [i for i, rgb in enumerate(measured) if colorsys.rgb_to_hsv(*(rgb / 255.0))[1] < 0.15]
+
+
+def _ordered_indices(rgb, quant_palette, neutral_inks=(), spread=96.0, neutral_chroma=24):
+    h, w, _ = rgb.shape
+    threshold = np.tile(_BAYER8, (h // 8 + 1, w // 8 + 1))[:h, :w][..., None] * spread
+    shifted = rgb + threshold
+    neutral = (rgb.max(-1) - rgb.min(-1)) < neutral_chroma
+    chromatic = np.ones(len(quant_palette), dtype=bool)
+    chromatic[list(neutral_inks)] = False
+    indices = np.empty((h, w), dtype=np.uint8)
+    for y0 in range(0, h, 120):  # bounded memory: distances for a band of rows at a time
+        band = shifted[y0:y0 + 120]
+        dist = ((band[:, :, None, :] - quant_palette[None, None]) ** 2).sum(-1)
+        if len(neutral_inks) >= 2:
+            # grey pixels are made of black and white dots only (no coloured speckles)
+            dist[neutral[y0:y0 + 120][..., None] & chromatic[None, None, :]] = np.inf
+        indices[y0:y0 + 120] = dist.argmin(-1)
+    return indices
+
+
+def render_indices(image, palette, mode, saturation=0.5):
+    """Palette indices (one per pixel) as the display will show them."""
+    quant = blended(palette, saturation)
+    if mode == GRAPHICS:
+        adapted = adapt_colours(image.convert("RGB"), palette)
+        rgb = _snap(np.asarray(adapted, dtype=np.float32), quant)
+        return _ordered_indices(rgb, quant, _neutral_inks(palette))
+    pal_image = Image.new("P", (1, 1))
+    pal_image.putpalette([int(v) for v in quant.flatten()])
+    quantized = image.convert("RGB").quantize(len(quant), palette=pal_image, dither=Image.Dither.FLOYDSTEINBERG)
+    return np.asarray(quantized, dtype=np.uint8)
+
+
+def to_pure_palette_image(indices, palette):
+    """Palette ("P") image in the display's pure colours: the driver sends it without dithering."""
+    image = Image.fromarray(indices.astype(np.uint8), "P")
+    image.putpalette([int(v) for colour in palette["pure"] for v in colour])
+    return image
+
+
+def simulate(image, palette, mode, saturation=0.5):
+    """What the panel will look like (measured ink colours, normalised to the paper white)."""
+    indices = render_indices(image, palette, mode, saturation)
+    measured = np.array(palette["measured"], dtype=np.float32)
+    white = measured[_white_index(palette)]
+    perceived = np.clip(measured / np.maximum(white, 1) * 255.0, 0, 255).astype(np.uint8)
+    return Image.fromarray(perceived[indices], "RGB")
