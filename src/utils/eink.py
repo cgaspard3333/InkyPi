@@ -214,8 +214,14 @@ def render_indices(image, palette, mode, saturation=0.5):
     """Palette indices (one per pixel) as the display will show them."""
     quant = blended(palette, saturation)
     if mode == GRAPHICS:
-        adapted = adapt_colours(image.convert("RGB"), palette)
-        rgb = _snap(np.asarray(adapted, dtype=np.float32), quant)
+        # Adapting and snapping depend on the colour only: done once per distinct colour
+        pixels = np.asarray(image.convert("RGB"), dtype=np.uint8)
+        packed = (pixels[..., 0].astype(np.uint32) << 16) | (pixels[..., 1].astype(np.uint32) << 8) | pixels[..., 2]
+        colours, inverse = np.unique(packed.ravel(), return_inverse=True)
+        unique_rgb = np.stack([(colours >> 16) & 255, (colours >> 8) & 255, colours & 255], -1).astype(np.uint8)
+        adapted = adapt_colours(Image.fromarray(unique_rgb[None, :, :], "RGB"), palette)
+        snapped = _snap(np.asarray(adapted, dtype=np.float32), quant)[0]
+        rgb = snapped[inverse.ravel()].reshape(pixels.shape)
         return _ordered_indices(rgb, quant, _neutral_inks(palette))
     pal_image = Image.new("P", (1, 1))
     pal_image.putpalette([int(v) for v in quant.flatten()])
