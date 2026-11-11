@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 PAGE_HOST = "photos.google.com"
 IMAGE_URL_PREFIX = "https://lh3.googleusercontent.com/"
 BATCH_URL = "https://photos.google.com/_/PhotosUi/data/batchexecute"
-MAX_ITEMS_PER_ALBUM = 3000
+# Safety cap (photos + videos); pages hold 300 items, so this is ~67 requests at most
+MAX_ITEMS_PER_ALBUM = 20000
 VIDEO_MARKER = "76647426"  # key present in a video item's metadata object
 
 USER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -170,5 +171,11 @@ def fetch_album(session, link, max_items=MAX_ITEMS_PER_ALBUM):
             break
         photos.extend(parse_items(items))
         read += len(items) if isinstance(items, list) else 0
+
+    if token and read >= max_items:
+        # Stopped by the safety cap, not by the end of the album: say so
+        logger.warning(f"Google Photos: '{album['title']}' has more than {max_items} items, "
+                       f"only the first {len(photos)} photos are used")
+        complete = False
 
     return {"title": album["title"], "photos": photos, "complete": complete}

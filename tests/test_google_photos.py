@@ -385,3 +385,18 @@ def test_plugin_api_route_only_exposes_api_methods(plugin):
         assert client.post("/plugin_api/google_photos/generate_image", json={}).status_code == 404
         assert client.post("/plugin_api/google_photos/__init__", json={}).status_code == 404
         assert client.post("/plugin_api/missing/album_info", json={}).status_code == 404
+
+
+def test_large_albums_are_read_past_3000_items():
+    pages = [_batch([_item(i) for i in range(n, n + 300)], f"T{n + 300}" if n + 300 < 8400 else "")
+             for n in range(300, 8400, 300)]
+    session = FakeSession(_page([_item(i) for i in range(300)], token="T300"), pages)
+    album = fetch_album(session, "https://photos.app.goo.gl/x")
+    assert len(album["photos"]) == 8400 and album["complete"]
+
+
+def test_album_cut_by_the_safety_cap_is_marked_partial():
+    session = FakeSession(_page([_item(i) for i in range(300)], token="T1"),
+                          [_batch([_item(i) for i in range(300, 600)], "T2")])
+    album = fetch_album(session, "https://photos.app.goo.gl/x", max_items=600)
+    assert len(album["photos"]) == 600 and not album["complete"]

@@ -322,7 +322,7 @@
             if (!value) {
                 meta.textContent = t('Paste the link of a shared album');
             } else if (row.dataset.loading && !info) {
-                meta.textContent = t('Reading the album…');
+                meta.textContent = t('Reading the album… (large albums can take a few seconds)');
             } else if (info && info.error) {
                 meta.classList.add('error');
                 meta.textContent = info.error === 'invalid_link'
@@ -338,6 +338,7 @@
                 const detail = document.createElement('span');
                 let text = ' · ' + (info.count === 1 ? t('1 photo') : t('{count} photos', { count: info.count }));
                 if (info.total !== undefined && info.total !== info.count) text += ' ' + t('(of {total})', { total: info.total });
+                if (info.complete === false) text += ' · ' + t('partial list (album too large or not fully readable)');
                 detail.textContent = text;
                 meta.append(swatch, title, detail);
             } else {
