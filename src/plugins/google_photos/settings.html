@@ -1,0 +1,103 @@
+<style>
+    .form-help { font-size: 0.9em; opacity: 0.8; margin: 6px 0 0; line-height: 1.4; }
+    .album-entry { display: flex; gap: 8px; align-items: center; }
+    .album-entry .form-input { flex: 1; }
+</style>
+
+<div class="form-group">
+    <label class="form-label">Shared albums:</label>
+    <div id="albumList"></div>
+    <button type="button" class="form-input collapsible" onclick="addAlbumInput('')">Add Album</button>
+    <p class="form-help">
+        In Google Photos, open the album, tap <em>Share</em> &rarr; <em>Create link</em> (or turn on
+        <em>Link sharing</em>) and paste the link here, e.g. <code>https://photos.app.goo.gl/...</code>.
+        Anyone with the link can see the album. New photos added to the album are picked up automatically.
+    </p>
+</div>
+
+<div class="form-group">
+    <label for="order" class="form-label">Order:</label>
+    <select id="order" name="order" class="form-input">
+        <option value="shuffle">Shuffle (each photo once before repeating)</option>
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+    </select>
+</div>
+
+<div class="form-group">
+    <label for="fitMode" class="form-label">Framing:</label>
+    <select id="fitMode" name="fitMode" class="form-input" onchange="updateBackgroundVisibility()">
+        <option value="fit">Fit whole photo (with background)</option>
+        <option value="fill">Fill screen (crop)</option>
+    </select>
+</div>
+
+<div class="form-group" id="backgroundGroup">
+    <label class="form-label">Background:</label>
+    <div class="form-group">
+        <input type="radio" id="backgroundBlur" name="backgroundOption" value="blur">
+        <label for="backgroundBlur">Blur</label>
+        <input type="radio" id="backgroundColorOption" name="backgroundOption" value="color">
+        <label for="backgroundColorOption">Color</label>
+        <input type="color" id="backgroundColor" name="backgroundColor" value="#ffffff" class="color-picker"/>
+    </div>
+</div>
+
+<div class="form-group">
+    <label for="albumRefreshHours" class="form-label">Check albums for new photos every:</label>
+    <select id="albumRefreshHours" name="albumRefreshHours" class="form-input">
+        <option value="1">1 hour</option>
+        <option value="3">3 hours</option>
+        <option value="6">6 hours</option>
+        <option value="12">12 hours</option>
+        <option value="24">24 hours</option>
+    </select>
+</div>
+
+<script>
+    function addAlbumInput(url) {
+        const wrapper = document.createElement('div');
+        wrapper.classList.add('form-group', 'album-entry');
+
+        const urlInput = document.createElement('input');
+        urlInput.type = 'url';
+        urlInput.name = 'albumURLs[]';
+        urlInput.placeholder = 'https://photos.app.goo.gl/...';
+        urlInput.required = true;
+        urlInput.classList.add('form-input');
+        urlInput.value = url;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.textContent = '✕';
+        removeBtn.classList.add('remove-btn');
+        removeBtn.addEventListener('click', () => wrapper.remove());
+
+        wrapper.append(urlInput, removeBtn);
+        document.getElementById('albumList').appendChild(wrapper);
+    }
+
+    function updateBackgroundVisibility() {
+        const fill = document.getElementById('fitMode').value === 'fill';
+        document.getElementById('backgroundGroup').style.display = fill ? 'none' : '';
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        let albums = [''];
+        let backgroundOption = 'blur';
+        if (loadPluginSettings) {
+            albums = pluginSettings['albumURLs[]'] && pluginSettings['albumURLs[]'].length
+                ? pluginSettings['albumURLs[]'] : [''];
+            document.getElementById('order').value = pluginSettings.order || 'shuffle';
+            document.getElementById('fitMode').value = pluginSettings.fitMode || 'fit';
+            document.getElementById('backgroundColor').value = pluginSettings.backgroundColor || '#ffffff';
+            document.getElementById('albumRefreshHours').value = pluginSettings.albumRefreshHours || '3';
+            backgroundOption = pluginSettings.backgroundOption || 'blur';
+        } else {
+            document.getElementById('albumRefreshHours').value = '3';
+        }
+        albums.forEach(url => addAlbumInput(url));
+        document.querySelector(`input[name="backgroundOption"][value="${backgroundOption}"]`).checked = true;
+        updateBackgroundVisibility();
+    });
+</script>

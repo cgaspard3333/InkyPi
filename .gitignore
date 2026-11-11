@@ -181,3 +181,6 @@ src/static/images/current_image.png
 src/plugins/calendar/cache/
 src/plugins/weather/cache/
 .venv/
+
+# Google Photos album lists, rotation state and downloaded photos
+src/plugins/google_photos/cache/
