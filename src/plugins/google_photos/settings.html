@@ -5,7 +5,7 @@
     .album-entry .album-share { width: 5.5em; flex: 0 0 auto; }
     .album-entry .album-meta { flex: 1 0 100%; font-size: 0.85em; opacity: 0.75; }
     .inline-group { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .inline-group .form-input { width: auto; }
+    .inline-group .form-input { width: auto; max-width: 100%; }
 </style>
 
 <div class="form-group">
@@ -13,9 +13,11 @@
     <div id="albumList"></div>
     <button type="button" class="form-input collapsible" onclick="addAlbumInput('', '')">Add Album</button>
     <div class="inline-group" style="margin-top: 8px;">
-        <input type="checkbox" id="albumSharesAuto" onchange="this.value = this.checked ? 'true' : 'false'; refreshShares();">
+        <label class="check-label">
+            <input type="checkbox" id="albumSharesAuto" onchange="this.value = this.checked ? 'true' : 'false'; refreshShares();">
+            <span>Automatic shares (proportional to each album's number of photos)</span>
+        </label>
         <input type="hidden" id="albumSharesAutoValue" name="albumSharesAuto" value="true">
-        <label for="albumSharesAuto">Automatic shares (proportional to each album's number of photos)</label>
         <span id="shareTotal" class="form-help"></span>
     </div>
     <p class="form-help">
@@ -61,8 +63,10 @@
         <option value="portrait">Portrait only</option>
     </select>
     <div class="inline-group" style="margin-top: 6px;">
-        <input type="checkbox" id="pairPhotos" name="pairPhotos" onclick="this.value=this.checked ? 'true' : 'false';">
-        <label for="pairPhotos">Show two portrait photos side by side (landscape screen) / two landscape photos stacked (portrait screen)</label>
+        <label class="check-label">
+            <input type="checkbox" id="pairPhotos" name="pairPhotos" onclick="this.value=this.checked ? 'true' : 'false';">
+            <span>Show two portrait photos side by side (landscape screen) / two landscape photos stacked (portrait screen)</span>
+        </label>
     </div>
 </div>
 
@@ -99,8 +103,10 @@
                 <option value="{{ code }}">{{ name }}</option>
                 {% endfor %}
             </select>
-            <input type="checkbox" id="captionYearsAgo" name="captionYearsAgo" onclick="this.value=this.checked ? 'true' : 'false';">
-            <label for="captionYearsAgo">"N years ago"</label>
+            <label class="check-label">
+                <input type="checkbox" id="captionYearsAgo" name="captionYearsAgo" onclick="this.value=this.checked ? 'true' : 'false';">
+                <span>“N years ago”</span>
+            </label>
         </span>
     </div>
 </div>

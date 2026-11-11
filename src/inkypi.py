@@ -71,6 +71,11 @@ app.config['DEVICE_CONFIG'] = device_config
 app.config['DISPLAY_MANAGER'] = display_manager
 app.config['REFRESH_TASK'] = refresh_task
 
+@app.context_processor
+def inject_device_name():
+    """Device name shown in the navigation bar of every page."""
+    return {"device_name": device_config.get_config("name", default="InkyPi")}
+
 # Set additional parameters
 app.config['MAX_FORM_PARTS'] = 10_000
 # Reject oversized uploads early (waitress otherwise accepts bodies up to 1 GB)
