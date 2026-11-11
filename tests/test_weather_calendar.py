@@ -54,6 +54,19 @@ def test_floating_times_use_configured_timezone(calendar_plugin, monkeypatch):
     assert events[0]["end"] == "2026-11-12T10:00:00+01:00"
 
 
+def test_date_value_with_tzid_stays_all_day(calendar_plugin):
+    cal = _cal("BEGIN:VEVENT\nUID:1\nDTSTART;TZID=Europe/Paris;VALUE=DATE:20261114\n"
+               "DTEND;TZID=Europe/Paris;VALUE=DATE:20261115\nSUMMARY:conge\nEND:VEVENT\n"
+               "BEGIN:VEVENT\nUID:2\nDTSTART;VALUE=DATE:20261116\nRRULE:FREQ=DAILY;COUNT=2\n"
+               "SUMMARY:recurrent\nEND:VEVENT\n")
+    start = TZ.localize(datetime(2026, 11, 11))
+    cal = Calendar._normalize_date_values(cal)
+    events = sorted(_events(calendar_plugin, cal, start, start + timedelta(weeks=2)), key=lambda e: e["start"])
+    assert [(e["title"], e["start"], e["allDay"]) for e in events] == [
+        ("conge", "2026-11-14", True), ("recurrent", "2026-11-16", True), ("recurrent", "2026-11-17", True)]
+    assert events[0]["end"] == "2026-11-15"
+
+
 # ---------------------------------------------------------------- weather
 
 @pytest.fixture
