@@ -260,8 +260,19 @@ def test_memory_mix_and_fallback(plugin):
     with mock.patch.object(gp_module, "datetime") as fake_dt:
         fake_dt.now.return_value = TZ.localize(datetime(2026, 11, 11, 9))
         with _albums({A: mixed}):
-            half = _shown(plugin, {**SETTINGS, "memoryShare": "50"}, 4)
-            assert sum(p.startswith("nov") for p in half) == 2
+            real_pick, pool_choices = gp_module.selection.weighted_pick, []
+
+            def recording_pick(weights, state):
+                choice = real_pick(weights, state)
+                if set(weights) == {"memory", "all"}:
+                    pool_choices.append(choice)
+                return choice
+
+            with mock.patch.object(gp_module.selection, "weighted_pick", side_effect=recording_pick):
+                half = _shown(plugin, {**SETTINGS, "memoryShare": "50"}, 4)
+            assert sorted(pool_choices) == ["all", "all", "memory", "memory"]
+            # exactly 2 draws from memories; the random draws may also land on November photos
+            assert sum(p.startswith("nov") for p in half) >= 2
             only = _shown(plugin, {**SETTINGS, "memoryShare": "100"}, 3)
             assert all(p.startswith("nov") for p in only)
         with _albums({A: _album("mar", 4, march)}):

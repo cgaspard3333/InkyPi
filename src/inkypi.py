@@ -20,6 +20,7 @@ import logging
 import threading
 import argparse
 from utils.app_utils import generate_startup_image, is_cross_origin_request
+from utils.accent import ACCENT_PRESETS, DEFAULT_ACCENT, get_accent
 from flask import Flask, request, send_from_directory, jsonify
 from werkzeug.serving import is_running_from_reloader
 from config import Config
@@ -73,8 +74,10 @@ app.config['REFRESH_TASK'] = refresh_task
 
 @app.context_processor
 def inject_device_name():
-    """Device name shown in the navigation bar of every page."""
-    return {"device_name": device_config.get_config("name", default="InkyPi")}
+    """Device name (navigation bar) and accent colour, available to every page."""
+    return {"device_name": device_config.get_config("name", default="InkyPi"),
+            "accent": get_accent(device_config.get_config("accent_color", default=DEFAULT_ACCENT)),
+            "accent_presets": ACCENT_PRESETS}
 
 # Set additional parameters
 app.config['MAX_FORM_PARTS'] = 10_000
