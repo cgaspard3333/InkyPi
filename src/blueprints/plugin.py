@@ -348,7 +348,8 @@ def preview_image():
             return jsonify({"error": _("Plugin '{name}' not found", name=plugin_id)}), 404
 
         simulate = plugin_settings.pop("simulateDisplay", None) == "true"
-        reuse = plugin_settings.pop("reuseRender", None) == "true" and not preview_files
+        # (new uploads get new file names, so they never match a cached render)
+        reuse = plugin_settings.pop("reuseRender", None) == "true"
         cache_key = _preview_cache_key(plugin_id, plugin_settings)
         image = _cached_plugin_image(cache_key) if reuse else None
         reused = image is not None
@@ -358,8 +359,7 @@ def preview_image():
             if image is None:
                 return jsonify({"error": _("The plugin did not produce an image")}), 500
             _preview_cache.clear()
-            if not preview_files:  # new uploads are deleted after the preview
-                _preview_cache.update(key=cache_key, image=image.copy(), time=time.monotonic())
+            _preview_cache.update(key=cache_key, image=image.copy(), time=time.monotonic())
         display_manager = current_app.config.get('DISPLAY_MANAGER')
         palette = display_manager.get_palette() if display_manager else None
         if simulate and palette:
