@@ -199,11 +199,15 @@ show_loader() {
     spinstr=${temp}${spinstr%"${temp}"}
     sleep ${delay}
   done
-  if [[ $? -eq 0 ]]; then
+  # Exit status of the background job itself (was the status of the loop, so always success)
+  wait "$pid"
+  local status=$?
+  if [[ $status -eq 0 ]]; then
     printf "\r$1 [\e[32m\xE2\x9C\x94\e[0m]\n"
   else
     printf "\r$1 [\e[31m\xE2\x9C\x98\e[0m]\n"
   fi
+  return $status
 }
 
 echo_success() {
@@ -256,9 +260,12 @@ setup_earlyoom_service() {
 create_venv(){
   echo "Creating python virtual environment. "
   python3 -m venv "$VENV_PATH"
-  $VENV_PATH/bin/python -m pip install --upgrade pip setuptools wheel > /dev/null
-  $VENV_PATH/bin/python -m pip install -r $PIP_REQUIREMENTS_FILE -qq > /dev/null &
-  show_loader "\tInstalling python dependencies. "
+  $VENV_PATH/bin/python -m pip install --retries 10 --timeout 60 --upgrade pip setuptools wheel > /dev/null
+  $VENV_PATH/bin/python -m pip install --retries 10 --timeout 60 -r $PIP_REQUIREMENTS_FILE -qq > /dev/null &
+  if ! show_loader "\tInstalling python dependencies. "; then
+    echo_error "ERROR: Failed to install Python dependencies (see pip errors above)."
+    exit 1
+  fi
 
   # do additional dependencies for Waveshare support.
   if [[ -n "$WS_TYPE" ]]; then
@@ -433,6 +440,9 @@ fi
 install_app_service
 
 echo "Update JS and CSS files"
-bash $SCRIPT_DIR/update_vendors.sh > /dev/null
+if ! bash $SCRIPT_DIR/update_vendors.sh > /dev/null; then
+  echo_error "ERROR: Failed to download JS/CSS vendor files."
+  exit 1
+fi
 
 ask_for_reboot
