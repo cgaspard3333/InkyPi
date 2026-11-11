@@ -166,9 +166,18 @@ def adapt_colours(image, palette, strength=0.4, boost=1.7, min_chroma=24):
     return Image.fromarray((np.clip(hsv, 0, 1) * 255).astype(np.uint8), "HSV").convert("RGB")
 
 
+def _distances(rgb, quant_palette):
+    """Squared distance of each pixel to each palette colour (|x|^2 - 2x.p + |p|^2, BLAS-fast)."""
+    pal = quant_palette.astype(np.float32)
+    dist = rgb @ (-2.0 * pal.T)
+    dist += (pal ** 2).sum(-1)
+    dist += (rgb ** 2).sum(-1, keepdims=True)
+    return dist
+
+
 def _snap(rgb, quant_palette, threshold=48):
     """Pixels within `threshold` of a quantization colour become exactly that colour."""
-    dist = ((rgb[:, :, None, :] - quant_palette[None, None, :, :]) ** 2).sum(-1)
+    dist = _distances(rgb, quant_palette)
     nearest = dist.argmin(-1)
     close = dist.min(-1) <= threshold ** 2
     out = rgb.copy()
@@ -189,10 +198,11 @@ def _ordered_indices(rgb, quant_palette, neutral_inks=(), spread=96.0, neutral_c
     neutral = (rgb.max(-1) - rgb.min(-1)) < neutral_chroma
     chromatic = np.ones(len(quant_palette), dtype=bool)
     chromatic[list(neutral_inks)] = False
+    shifted = shifted.astype(np.float32)
     indices = np.empty((h, w), dtype=np.uint8)
     for y0 in range(0, h, 120):  # bounded memory: distances for a band of rows at a time
         band = shifted[y0:y0 + 120]
-        dist = ((band[:, :, None, :] - quant_palette[None, None]) ** 2).sum(-1)
+        dist = _distances(band, quant_palette)
         if len(neutral_inks) >= 2:
             # grey pixels are made of black and white dots only (no coloured speckles)
             dist[neutral[y0:y0 + 120][..., None] & chromatic[None, None, :]] = np.inf
