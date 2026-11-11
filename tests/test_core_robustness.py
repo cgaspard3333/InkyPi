@@ -141,6 +141,12 @@ def test_write_config_is_atomic_and_keeps_backup(config_file):
     assert not [p for p in os.listdir(config_file.parent) if p.endswith(".tmp")]
 
 
+def test_write_config_keeps_file_mode(config_file):
+    os.chmod(config_file, 0o664)
+    Config().update_value("name", "x", write=True)
+    assert (os.stat(config_file).st_mode & 0o777) == 0o664
+
+
 def test_failed_serialization_does_not_truncate_config(config_file):
     cfg = Config()
     cfg.update_value("name", "good", write=True)

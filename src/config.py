@@ -78,6 +78,21 @@ class Config:
             self._atomic_write(self.config_file, data)
 
     @staticmethod
+    def _copy_ownership(src, dst):
+        """mkstemp creates 0600 files owned by the service user (root): keep the original
+        file's mode and owner so the config stays readable/editable by the user."""
+        try:
+            st = os.stat(src)
+        except FileNotFoundError:
+            os.chmod(dst, 0o644)
+            return
+        os.chmod(dst, st.st_mode & 0o7777)
+        try:
+            os.chown(dst, st.st_uid, st.st_gid)
+        except PermissionError:
+            pass  # not running as root: the file keeps our own uid
+
+    @staticmethod
     def _atomic_write(path, data):
         """Write to a temp file, fsync, keep a backup of the previous version, then atomically replace."""
         directory = os.path.dirname(path)
@@ -87,6 +102,7 @@ class Config:
                 f.write(data)
                 f.flush()
                 os.fsync(f.fileno())
+            Config._copy_ownership(path, tmp_path)
             if os.path.isfile(path):
                 shutil.copy2(path, path + ".bak")
             os.replace(tmp_path, path)
