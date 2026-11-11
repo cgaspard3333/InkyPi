@@ -21,6 +21,7 @@ import threading
 import argparse
 from utils.app_utils import generate_startup_image, is_cross_origin_request
 from utils.accent import ACCENT_PRESETS, DEFAULT_ACCENT, get_accent
+from utils.i18n import DEFAULT_LANGUAGE as DEFAULT_UI_LANGUAGE, UI_LANGUAGES, get_catalog, normalize_language, translate
 from flask import Flask, request, send_from_directory, jsonify
 from werkzeug.serving import is_running_from_reloader
 from config import Config
@@ -74,10 +75,15 @@ app.config['REFRESH_TASK'] = refresh_task
 
 @app.context_processor
 def inject_device_name():
-    """Device name (navigation bar) and accent colour, available to every page."""
+    """Device name (navigation bar), accent colour and UI language, available to every page."""
+    ui_lang = normalize_language(device_config.get_config("ui_language", default=DEFAULT_UI_LANGUAGE))
     return {"device_name": device_config.get_config("name", default="InkyPi"),
             "accent": get_accent(device_config.get_config("accent_color", default=DEFAULT_ACCENT)),
-            "accent_presets": ACCENT_PRESETS}
+            "accent_presets": ACCENT_PRESETS,
+            "ui_lang": ui_lang,
+            "ui_languages": UI_LANGUAGES,
+            "i18n_catalog": get_catalog(ui_lang),
+            "_": lambda text, **kwargs: translate(text, ui_lang, **kwargs)}
 
 # Set additional parameters
 app.config['MAX_FORM_PARTS'] = 10_000

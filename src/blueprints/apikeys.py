@@ -3,6 +3,7 @@ from dotenv import dotenv_values
 import os
 import re
 import logging
+from utils.i18n import _
 
 logger = logging.getLogger(__name__)
 apikeys_bp = Blueprint("apikeys", __name__)
@@ -98,7 +99,7 @@ def save_apikeys():
             
             # Validate key format
             if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', key):
-                return jsonify({"error": f"Invalid key format: {key}"}), 400
+                return jsonify({"error": _("Invalid key format: {key}", key=key)}), 400
             
             if keep_existing:
                 # Use existing value from .env file
@@ -107,7 +108,7 @@ def save_apikeys():
                 # Use provided value
                 value = entry.get('value', '').strip()
                 if "\n" in value or "\r" in value:
-                    return jsonify({"error": f"Invalid value for {key}: line breaks are not allowed"}), 400
+                    return jsonify({"error": _("Invalid value for {key}: line breaks are not allowed", key=key)}), 400
             
             valid_entries.append((key, value))
         
@@ -122,10 +123,10 @@ def save_apikeys():
             
             return jsonify({
                 "success": True,
-                "message": f"Saved {len(valid_entries)} API key(s). Some plugins may require restart to pick up changes."
+                "message": _("Saved {count} API key(s). Some plugins may require restart to pick up changes.", count=len(valid_entries))
             })
         else:
-            return jsonify({"error": "Failed to write .env file"}), 500
+            return jsonify({"error": _("Failed to write .env file")}), 500
             
     except Exception as e:
         logger.error(f"Error saving API keys: {e}")
