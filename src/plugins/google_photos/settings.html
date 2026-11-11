@@ -9,26 +9,24 @@
 </style>
 
 <div class="form-group">
-    <label class="form-label">Shared albums:</label>
+    <label class="form-label">{{ _('Shared albums:') }}</label>
     <div id="albumList"></div>
-    <button type="button" class="form-input collapsible" onclick="addAlbumInput('', '')">Add Album</button>
+    <button type="button" class="form-input collapsible" onclick="addAlbumInput('', '')">{{ _('Add Album') }}</button>
     <div class="inline-group" style="margin-top: 8px;">
         <label class="check-label">
             <input type="checkbox" id="albumSharesAuto" onchange="this.value = this.checked ? 'true' : 'false'; refreshShares();">
-            <span>Automatic shares (proportional to each album's number of photos)</span>
+            <span>{{ _('Automatic shares (proportional to each album\'s number of photos)') }}</span>
         </label>
         <input type="hidden" id="albumSharesAutoValue" name="albumSharesAuto" value="true">
         <span id="shareTotal" class="form-help"></span>
     </div>
     <p class="form-help">
-        In Google Photos, open the album, tap <em>Share</em> &rarr; <em>Create link</em> and paste the link here
-        (e.g. <code>https://photos.app.goo.gl/...</code>). Anyone with the link can see the album.
-        New photos are picked up automatically. Photo counts appear once an album has been read.
+        {{ _('In Google Photos, open the album, tap Share → Create link and paste the link here (e.g. https://photos.app.goo.gl/...). Anyone with the link can see the album. New photos are picked up automatically. Photo counts appear once an album has been read.') }}
     </p>
 </div>
 
 <div class="form-group">
-    <label for="memoryShare" class="form-label">Memories:</label>
+    <label for="memoryShare" class="form-label">{{ _('Memories:') }}</label>
     <div class="inline-group">
         <input type="range" id="memoryShare" name="memoryShare" min="0" max="100" step="5" value="0"
                oninput="updateMemoryLabel()">
@@ -36,67 +34,67 @@
     </div>
     <div class="inline-group" id="memoryOptions" style="margin-top: 6px;">
         <select id="memoryType" name="memoryType" class="form-input" onchange="updateMemoryLabel()">
-            <option value="month">Photos taken this month (every year)</option>
-            <option value="day">On this day in previous years</option>
+            <option value="month">{{ _('Photos taken this month (every year)') }}</option>
+            <option value="day">{{ _('On this day in previous years') }}</option>
         </select>
         <span id="memoryWindowGroup">&plusmn;
             <input type="number" id="memoryWindowDays" name="memoryWindowDays" min="0" max="30" value="3"
-                   class="form-input" style="width: 4.5em;"> days</span>
+                   class="form-input" style="width: 4.5em;"> {{ _('days') }}</span>
     </div>
-    <p class="form-help">Share of photos picked from your memories; the rest are random. When there is no memory, any photo is shown.</p>
+    <p class="form-help">{{ _('Share of photos picked from your memories; the rest are random. When there is no memory, any photo is shown.') }}</p>
 </div>
 
 <div class="form-group">
-    <label for="order" class="form-label">Order (other photos):</label>
+    <label for="order" class="form-label">{{ _('Order (other photos):') }}</label>
     <select id="order" name="order" class="form-input">
-        <option value="shuffle">Shuffle (each photo once before repeating)</option>
-        <option value="newest">Newest first</option>
-        <option value="oldest">Oldest first</option>
+        <option value="shuffle">{{ _('Shuffle (each photo once before repeating)') }}</option>
+        <option value="newest">{{ _('Newest first') }}</option>
+        <option value="oldest">{{ _('Oldest first') }}</option>
     </select>
 </div>
 
 <div class="form-group">
-    <label for="orientationFilter" class="form-label">Photos:</label>
+    <label for="orientationFilter" class="form-label">{{ _('Photos:') }}</label>
     <select id="orientationFilter" name="orientationFilter" class="form-input">
-        <option value="any">All orientations</option>
-        <option value="landscape">Landscape only</option>
-        <option value="portrait">Portrait only</option>
+        <option value="any">{{ _('All orientations') }}</option>
+        <option value="landscape">{{ _('Landscape only') }}</option>
+        <option value="portrait">{{ _('Portrait only') }}</option>
     </select>
     <div class="inline-group" style="margin-top: 6px;">
         <label class="check-label">
             <input type="checkbox" id="pairPhotos" name="pairPhotos" onclick="this.value=this.checked ? 'true' : 'false';">
-            <span>Show two portrait photos side by side (landscape screen) / two landscape photos stacked (portrait screen)</span>
+            <span>{{ _('Show two portrait photos side by side (landscape screen) / two landscape photos stacked (portrait screen)') }}</span>
         </label>
     </div>
 </div>
 
 <div class="form-group">
-    <label for="fitMode" class="form-label">Framing:</label>
+    <label for="fitMode" class="form-label">{{ _('Framing:') }}</label>
     <select id="fitMode" name="fitMode" class="form-input" onchange="updateBackgroundVisibility()">
-        <option value="fit">Fit whole photo (with background)</option>
-        <option value="fill">Fill screen (crop)</option>
+        <option value="fit">{{ _('Fit whole photo (with background)') }}</option>
+        <option value="fill">{{ _('Fill screen (crop)') }}</option>
     </select>
     <div class="form-group" id="backgroundGroup" style="margin-top: 6px;">
         <input type="radio" id="backgroundBlur" name="backgroundOption" value="blur">
-        <label for="backgroundBlur">Blurred background</label>
+        <label for="backgroundBlur">{{ _('Blurred background') }}</label>
         <input type="radio" id="backgroundColorOption" name="backgroundOption" value="color">
-        <label for="backgroundColorOption">Colour</label>
+        <label for="backgroundColorOption">{{ _('Colour') }}</label>
         <input type="color" id="backgroundColor" name="backgroundColor" value="#ffffff" class="color-picker"/>
     </div>
 </div>
 
 <div class="form-group">
-    <label for="caption" class="form-label">Caption:</label>
+    <label for="caption" class="form-label">{{ _('Caption:') }}</label>
     <div class="inline-group">
         <select id="caption" name="caption" class="form-input" onchange="updateCaptionVisibility()">
-            <option value="none">None</option>
-            <option value="date">Date</option>
-            <option value="date_album">Date and album</option>
+            <option value="none">{{ _('None') }}</option>
+            <option value="date">{{ _('Date') }}</option>
+            <option value="date_album">{{ _('Date and album') }}</option>
         </select>
         <span id="captionOptions" class="inline-group">
             <select id="captionPosition" name="captionPosition" class="form-input">
-                <option value="bottom_left">Bottom left</option>
-                <option value="bottom_right">Bottom right</option>
+                <option value="bottom_left">{{ _('Bottom left') }}</option>
+                <option value="bottom_right">{{ _('Bottom right') }}</option>
             </select>
             <select id="captionLanguage" name="captionLanguage" class="form-input">
                 {% for code, name in languages.items() %}
@@ -105,20 +103,20 @@
             </select>
             <label class="check-label">
                 <input type="checkbox" id="captionYearsAgo" name="captionYearsAgo" onclick="this.value=this.checked ? 'true' : 'false';">
-                <span>“N years ago”</span>
+                <span>{{ _('“N years ago”') }}</span>
             </label>
         </span>
     </div>
 </div>
 
 <div class="form-group">
-    <label for="albumRefreshHours" class="form-label">Check albums for new photos every:</label>
+    <label for="albumRefreshHours" class="form-label">{{ _('Check albums for new photos every:') }}</label>
     <select id="albumRefreshHours" name="albumRefreshHours" class="form-input">
-        <option value="1">1 hour</option>
-        <option value="3">3 hours</option>
-        <option value="6">6 hours</option>
-        <option value="12">12 hours</option>
-        <option value="24">24 hours</option>
+        <option value="1">{{ _('1 hour') }}</option>
+        <option value="3">{{ _('3 hours') }}</option>
+        <option value="6">{{ _('6 hours') }}</option>
+        <option value="12">{{ _('12 hours') }}</option>
+        <option value="24">{{ _('24 hours') }}</option>
     </select>
 </div>
 
@@ -162,7 +160,7 @@
         shareInput.min = '0';
         shareInput.max = '100';
         shareInput.step = '1';
-        shareInput.title = 'Share of photos taken from this album (%)';
+        shareInput.title = t('Share of photos taken from this album (%)');
         shareInput.classList.add('form-input', 'album-share');
         shareInput.value = share;
         shareInput.addEventListener('input', refreshShares);
@@ -198,7 +196,7 @@
             const info = infoFor(row.querySelector('.album-url').value);
             const shareInput = row.querySelector('.album-share');
             const meta = row.querySelector('.album-meta');
-            meta.textContent = info ? `${info.title} — ${info.count} photos` : 'Not read yet (photo count shown after the first display)';
+            meta.textContent = info ? t('{title} — {count} photos', { title: info.title, count: info.count }) : t('Not read yet (photo count shown after the first display)');
             if (auto) {
                 shareInput.readOnly = true;
                 shareInput.value = totalCount ? Math.round(100 * counts[i] / totalCount) : '';
@@ -209,8 +207,8 @@
         });
         const totalLabel = document.getElementById('shareTotal');
         if (!auto && rows.length > 1) {
-            totalLabel.textContent = Math.round(total) === 100 ? 'Total: 100%'
-                : `Total: ${Math.round(total)}% (shares are scaled to 100%)`;
+            totalLabel.textContent = Math.round(total) === 100 ? t('Total: 100%')
+                : t('Total: {total}% (shares are scaled to 100%)', { total: Math.round(total) });
         } else {
             totalLabel.textContent = '';
         }
@@ -218,8 +216,8 @@
 
     function updateMemoryLabel() {
         const share = parseInt(document.getElementById('memoryShare').value, 10);
-        const label = share === 0 ? 'Off (all photos at random)'
-            : share === 100 ? 'Memories only' : `${share}% memories, ${100 - share}% random`;
+        const label = share === 0 ? t('Off (all photos at random)')
+            : share === 100 ? t('Memories only') : t('{memories}% memories, {random}% random', { memories: share, random: 100 - share });
         document.getElementById('memoryShareLabel').textContent = label;
         document.getElementById('memoryOptions').style.display = share === 0 ? 'none' : '';
         document.getElementById('memoryWindowGroup').style.display =
