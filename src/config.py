@@ -1,6 +1,9 @@
 import os
 import json
 import logging
+import shutil
+import tempfile
+import threading
 from dotenv import load_dotenv
 from model import PlaylistManager, RefreshInfo
 
@@ -19,6 +22,9 @@ class Config:
     # Directory path for storing plugin instance images
     plugin_image_dir = os.path.join(BASE_DIR, "static", "images", "plugins")
 
+    # Serializes config writes between the web UI and the refresh thread
+    _write_lock = threading.RLock()
+
     def __init__(self):
         self.config = self.read_config()
         self.plugins_list = self.read_plugins_list()
@@ -28,8 +34,17 @@ class Config:
     def read_config(self):
         """Reads the device config JSON file and returns it as a dictionary."""
         logger.debug(f"Reading device config from {self.config_file}")
-        with open(self.config_file) as f:
-            config = json.load(f)
+        try:
+            with open(self.config_file) as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            backup_file = self.config_file + ".bak"
+            if not os.path.isfile(backup_file):
+                raise
+            logger.error(f"Device config is unreadable ({e}), restoring from {backup_file}")
+            with open(backup_file) as f:
+                config = json.load(f)
+            shutil.copyfile(backup_file, self.config_file)
 
         logger.debug("Loaded config:\n%s", json.dumps(config, indent=3))
 
@@ -55,10 +70,35 @@ class Config:
     def write_config(self):
         """Updates the cached config from the model objects and writes to the config file."""
         logger.debug(f"Writing device config to {self.config_file}")
-        self.update_value("playlist_config", self.playlist_manager.to_dict())
-        self.update_value("refresh_info", self.refresh_info.to_dict())
-        with open(self.config_file, 'w') as outfile:
-            json.dump(self.config, outfile, indent=4)
+        with self._write_lock:
+            self.update_value("playlist_config", self.playlist_manager.to_dict())
+            self.update_value("refresh_info", self.refresh_info.to_dict())
+            # Serialize first so a failure never leaves a truncated file behind
+            data = json.dumps(self.config, indent=4)
+            self._atomic_write(self.config_file, data)
+
+    @staticmethod
+    def _atomic_write(path, data):
+        """Write to a temp file, fsync, keep a backup of the previous version, then atomically replace."""
+        directory = os.path.dirname(path)
+        fd, tmp_path = tempfile.mkstemp(dir=directory, prefix=".device.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+            if os.path.isfile(path):
+                shutil.copy2(path, path + ".bak")
+            os.replace(tmp_path, path)
+            dir_fd = os.open(directory, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except BaseException:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise
 
     def get_config(self, key=None, default={}):
         """Gets the value of a specific configuration key or returns the entire config if none provided."""
@@ -103,14 +143,16 @@ class Config:
 
     def update_config(self, config):
         """Updates the config with the new values provided and writes to the config file."""
-        self.config.update(config)
-        self.write_config()
+        with self._write_lock:
+            self.config.update(config)
+            self.write_config()
 
     def update_value(self, key, value, write=False):
         """Updates a specific key in the configuration with a new value and optionally writes it to the config file."""
-        self.config[key] = value
-        if write:
-            self.write_config()
+        with self._write_lock:
+            self.config[key] = value
+            if write:
+                self.write_config()
 
     def load_env_key(self, key):
         """Loads an environment variable using dotenv and returns its value."""

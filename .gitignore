@@ -175,6 +175,8 @@ mock_display_output/
 
 # Local device state (contains private calendar URLs)
 src/config/device.json
+src/config/device.json.bak
+src/config/.device.*.tmp
 src/static/images/current_image.png
 src/plugins/calendar/cache/
 .venv/
