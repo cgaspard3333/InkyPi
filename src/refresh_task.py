@@ -170,9 +170,10 @@ class RefreshTask:
         # check if image is the same as current image
         if image_hash != latest_refresh.image_hash:
             logger.info(f"Updating display. | refresh_info: {refresh_info}")
-            colour_mode = eink.resolve_mode(refresh_action.get_plugin_id(), refresh_action.get_settings())
+            colour_plan = eink.colour_plan(refresh_action.get_plugin_id(), refresh_action.get_settings(),
+                                           self.device_config.get_config("image_settings"))
             self.display_manager.display_image(image, image_settings=plugin.config.get("image_settings", []),
-                                               colour_mode=colour_mode)
+                                               colour_plan=colour_plan)
         else:
             logger.info(f"Image already displayed, skipping refresh. | refresh_info: {refresh_info}")
 

@@ -151,8 +151,14 @@
 
         function syncColourMode(value) {
             const field = document.getElementById('colourMode');
-            if (field) field.value = value;
+            if (field) { field.value = value; updateColourManual(); }
             showPreview();
+        }
+
+        function updateColourManual() {
+            const field = document.getElementById('colourMode');
+            const panel = document.getElementById('colourManual');
+            if (field && panel) panel.hidden = field.value !== 'manual';
         }
 
         function buildSettingsFormData() {
@@ -292,12 +298,23 @@
             }
         }
 
-        // colour rendering mode of this instance
+        // colour rendering of this instance (recommended mode when not chosen yet)
         document.addEventListener('DOMContentLoaded', () => {
             const modeField = document.getElementById('colourMode');
-            if (modeField && loadPluginSettings && ['photo', 'graphics'].includes(pluginSettings.colourMode)) {
-                modeField.value = pluginSettings.colourMode;
-            }
+            if (!modeField) return;
+            const saved = loadPluginSettings ? pluginSettings : {};
+            modeField.value = ['photo', 'graphics', 'manual'].includes(saved.colourMode) ? saved.colourMode : modeField.dataset.default;
+            const rendering = document.getElementById('colourRendering');
+            rendering.value = ['photo', 'graphics'].includes(saved.colourRendering) ? saved.colourRendering : modeField.dataset.default;
+            document.querySelectorAll('.colour-slider input').forEach(slider => {
+                if (saved[slider.name] !== undefined && saved[slider.name] !== '') slider.value = saved[slider.name];
+                const output = slider.parentElement.querySelector('output');
+                const show = () => { output.textContent = Number(slider.value).toFixed(slider.step === '0.05' ? 2 : 1); };
+                slider.addEventListener('input', show);
+                show();
+            });
+            modeField.addEventListener('change', updateColourManual);
+            updateColourManual();
         });
 
         // populate form values from plugin settings
@@ -414,14 +431,39 @@
 
                 {% if has_palette %}
                 <!-- How colours are converted for the e-paper palette -->
+                {% set recommended = ' (' ~ _('recommended') ~ ')' %}
                 <div class="form-group colour-mode-group">
                     <label for="colourMode" class="form-label">{{ _('Colours on the display:') }}</label>
-                    <select id="colourMode" name="colourMode" class="form-input">
-                        <option value="auto">{{ _('Automatic') }} ({{ _('Photo') if auto_colour_mode == 'photo' else _('Graphics') }})</option>
-                        <option value="photo">{{ _('Photo: smooth shades (dithering)') }}</option>
-                        <option value="graphics">{{ _('Graphics: vivid colours, crisp text') }}</option>
+                    <select id="colourMode" name="colourMode" class="form-input" data-default="{{ default_colour_mode }}">
+                        <option value="photo">{{ _('Photo: smooth shades (dithering)') }}{{ recommended if default_colour_mode == 'photo' }}</option>
+                        <option value="graphics">{{ _('Graphics: vivid colours, crisp text') }}{{ recommended if default_colour_mode == 'graphics' }}</option>
+                        <option value="manual">{{ _('Manual: my own settings') }}</option>
                     </select>
                     <p class="form-help" style="flex-basis: 100%;">{{ _('Graphics mode adapts colours to the inks of the display (pastel colours become readable, text stays black). Use Preview with “Simulate the e-ink display” to compare.') }}</p>
+                </div>
+                <div class="colour-manual" id="colourManual" hidden>
+                    <p class="form-help">{{ _('These values replace the image settings of the Settings page for this instance only.') }}</p>
+                    <div class="form-group">
+                        <label for="colourRendering" class="form-label">{{ _('Rendering:') }}</label>
+                        <select id="colourRendering" name="colourRendering" class="form-input">
+                            <option value="photo">{{ _('Photo') }}</option>
+                            <option value="graphics">{{ _('Graphics') }}</option>
+                        </select>
+                    </div>
+                    {% for field, key, label, max, step in [
+                        ('colourSaturation', 'saturation', _('Saturation:'), 2, 0.1),
+                        ('colourContrast', 'contrast', _('Contrast:'), 2, 0.1),
+                        ('colourBrightness', 'brightness', _('Brightness:'), 2, 0.1),
+                        ('colourSharpness', 'sharpness', _('Sharpness:'), 2, 0.1),
+                        ('colourInk', 'inky_saturation', _('Inky Driver Saturation:'), 1, 0.05)] %}
+                    <div class="form-group colour-slider">
+                        <label for="{{ field }}" class="form-label">{{ label }}</label>
+                        <input type="range" id="{{ field }}" name="{{ field }}" class="form-input"
+                               min="0" max="{{ max }}" step="{{ step }}"
+                               value="{{ global_image_settings.get(key, 0.5 if key == 'inky_saturation' else 1.0) }}">
+                        <output for="{{ field }}" class="colour-slider-value">{{ global_image_settings.get(key, 0.5 if key == 'inky_saturation' else 1.0) }}</output>
+                    </div>
+                    {% endfor %}
                 </div>
                 {% endif %}
 
@@ -546,9 +588,9 @@
                     <span>{{ _('Simulate the e-ink display') }}</span>
                 </label>
                 <select id="previewColourMode" class="form-input" onchange="syncColourMode(this.value)" aria-label="{{ _('Colours on the display:') }}">
-                    <option value="auto">{{ _('Automatic') }} ({{ _('Photo') if auto_colour_mode == 'photo' else _('Graphics') }})</option>
-                    <option value="photo">{{ _('Photo') }}</option>
-                    <option value="graphics">{{ _('Graphics') }}</option>
+                    <option value="photo">{{ _('Photo') }}{{ recommended if default_colour_mode == 'photo' }}</option>
+                    <option value="graphics">{{ _('Graphics') }}{{ recommended if default_colour_mode == 'graphics' }}</option>
+                    <option value="manual">{{ _('Manual') }}</option>
                 </select>
             </div>
             {% endif %}

@@ -29,8 +29,12 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
-PHOTO, GRAPHICS, AUTO = "photo", "graphics", "auto"
-MODES = (AUTO, PHOTO, GRAPHICS)
+PHOTO, GRAPHICS, MANUAL = "photo", "graphics", "manual"
+MODES = (PHOTO, GRAPHICS, MANUAL)
+
+# Manual mode: per-instance values replacing the global image settings
+MANUAL_FIELDS = {"saturation": "colourSaturation", "contrast": "colourContrast",
+                 "brightness": "colourBrightness", "sharpness": "colourSharpness"}
 
 # Plugins that show photographs: everything else is rendered as graphics in auto mode.
 PHOTO_PLUGINS = {"image_folder", "image_upload", "image_album", "image_url", "google_photos",
@@ -50,12 +54,43 @@ _BAYER8 = (np.array([
     [15, 47, 7, 39, 13, 45, 5, 37], [63, 31, 55, 23, 61, 29, 53, 21]], dtype=np.float32) + 0.5) / 64.0 - 0.5
 
 
-def resolve_mode(plugin_id, settings):
-    """Rendering mode of a plugin instance: explicit setting, else by plugin type."""
-    mode = (settings or {}).get("colourMode", AUTO)
-    if mode in (PHOTO, GRAPHICS):
-        return mode
+def default_mode(plugin_id):
+    """Recommended rendering for a plugin: photo for photographs, graphics for everything else."""
     return PHOTO if plugin_id in PHOTO_PLUGINS else GRAPHICS
+
+
+def resolve_mode(plugin_id, settings):
+    """Rendering algorithm of a plugin instance (photo or graphics)."""
+    settings = settings or {}
+    mode = settings.get("colourMode")
+    if mode == MANUAL:
+        mode = settings.get("colourRendering")
+    return mode if mode in (PHOTO, GRAPHICS) else default_mode(plugin_id)
+
+
+def _number(value, default, low, high):
+    try:
+        return min(high, max(low, float(value)))
+    except (TypeError, ValueError):
+        return default
+
+
+def colour_plan(plugin_id, settings, image_settings):
+    """How to render an instance: algorithm, image enhancement and ink saturation.
+
+    In manual mode the instance's own values replace the global image settings.
+    """
+    settings = settings or {}
+    image_settings = dict(image_settings or {})
+    saturation = _number(image_settings.get("inky_saturation"), 0.5, 0.0, 1.0)
+    manual = settings.get("colourMode") == MANUAL
+    if manual:
+        for key, field in MANUAL_FIELDS.items():
+            image_settings[key] = _number(settings.get(field), _number(image_settings.get(key), 1.0, 0.0, 2.0), 0.0, 2.0)
+        saturation = _number(settings.get("colourInk"), saturation, 0.0, 1.0)
+        image_settings["inky_saturation"] = saturation
+    return {"mode": resolve_mode(plugin_id, settings), "enhance": image_settings,
+            "saturation": saturation, "manual": manual}
 
 
 def palette_from_inky(inky_display):

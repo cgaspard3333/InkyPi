@@ -77,9 +77,12 @@ def plugin_page(plugin_id):
                 template_params["refresh_settings"] = plugin_instance.refresh
 
             template_params["playlists"] = playlist_manager.get_playlist_names()
-            # Colour rendering: what "automatic" means for this plugin, and whether the
-            # display has a known palette (graphics mode and e-ink simulation available)
-            template_params["auto_colour_mode"] = eink.resolve_mode(plugin_id, {})
+            # Colour rendering: recommended mode for this plugin, global values used as the
+            # starting point of manual settings, and whether the display has a known palette
+            # (graphics mode and e-ink simulation available)
+            template_params["default_colour_mode"] = eink.default_mode(plugin_id)
+            template_params["global_image_settings"] = eink.colour_plan(
+                plugin_id, {}, device_config.get_config("image_settings"))["enhance"]
             display_manager = current_app.config.get('DISPLAY_MANAGER')
             template_params["has_palette"] = bool(display_manager and display_manager.get_palette())
         except Exception as e:
@@ -286,7 +289,8 @@ def update_now():
             plugin = get_plugin_instance(plugin_config)
             image = plugin.generate_image(plugin_settings, device_config)
             display_manager.display_image(image, image_settings=plugin_config.get("image_settings", []),
-                                          colour_mode=eink.resolve_mode(plugin_id, plugin_settings))
+                                          colour_plan=eink.colour_plan(plugin_id, plugin_settings,
+                                                                       device_config.get_config("image_settings")))
 
     except TimeoutError as e:
         # The refresh thread may still be rendering from the uploaded files: keep them.
@@ -334,11 +338,10 @@ def preview_image():
         display_manager = current_app.config.get('DISPLAY_MANAGER')
         palette = display_manager.get_palette() if display_manager else None
         if simulate and palette:
-            # What the panel will show: same enhancement and colour mode as a real refresh
-            image_settings = device_config.get_config("image_settings", default={}) or {}
-            image = apply_image_enhancement(image.convert("RGB"), image_settings)
-            image = eink.simulate(image, palette, eink.resolve_mode(plugin_id, plugin_settings),
-                                  float(image_settings.get("inky_saturation", 0.5)))
+            # What the panel will show: same enhancement and colour rendering as a real refresh
+            plan = eink.colour_plan(plugin_id, plugin_settings, device_config.get_config("image_settings"))
+            image = apply_image_enhancement(image.convert("RGB"), plan["enhance"])
+            image = eink.simulate(image, palette, plan["mode"], plan["saturation"])
 
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")

@@ -38,7 +38,9 @@ def test_resolve_mode():
     assert eink.resolve_mode("google_photos", {}) == eink.PHOTO
     assert eink.resolve_mode("weather", {}) == eink.GRAPHICS
     assert eink.resolve_mode("clock", {}) == eink.PHOTO
-    assert eink.resolve_mode("weather", {"colourMode": "auto"}) == eink.GRAPHICS
+    assert eink.resolve_mode("weather", {"colourMode": "auto"}) == eink.GRAPHICS   # older settings
+    assert eink.resolve_mode("weather", {"colourMode": "manual", "colourRendering": "photo"}) == eink.PHOTO
+    assert eink.resolve_mode("weather", {"colourMode": "manual"}) == eink.GRAPHICS
     assert eink.resolve_mode("weather", {"colourMode": "photo"}) == eink.PHOTO
     assert eink.resolve_mode("image_folder", {"colourMode": "graphics"}) == eink.GRAPHICS
     assert eink.resolve_mode("weather", {"colourMode": "bogus"}) == eink.GRAPHICS
@@ -113,6 +115,22 @@ def test_simulate_shows_measured_inks():
     assert sim.getpixel((0, 26)) == (0, 0, 0)
 
 
+def test_colour_plan_global_and_manual():
+    global_settings = {"saturation": 1.4, "contrast": 1.2, "inky_saturation": 0.6}
+    plan = eink.colour_plan("weather", {"colourSaturation": "0.1"}, global_settings)
+    assert plan == {"mode": eink.GRAPHICS, "enhance": global_settings, "saturation": 0.6, "manual": False}
+
+    plan = eink.colour_plan("google_photos", {
+        "colourMode": "manual", "colourRendering": "graphics", "colourSaturation": "1.8",
+        "colourContrast": "9", "colourBrightness": "oops", "colourInk": "0.2"}, global_settings)
+    assert plan["mode"] == eink.GRAPHICS and plan["manual"] and plan["saturation"] == 0.2
+    assert plan["enhance"]["saturation"] == 1.8
+    assert plan["enhance"]["contrast"] == 2.0          # clamped
+    assert plan["enhance"]["brightness"] == 1.0        # invalid -> global value (default 1.0)
+    assert global_settings["saturation"] == 1.4        # global settings untouched
+    assert eink.colour_plan("clock", None, None)["enhance"] == {}
+
+
 def test_display_manager_prepare_colours():
     from display.display_manager import DisplayManager
     manager = DisplayManager.__new__(DisplayManager)
@@ -121,9 +139,14 @@ def test_display_manager_prepare_colours():
     manager.device_config = mock.Mock()
     manager.device_config.get_config.return_value = {"inky_saturation": 0.5}
     image = weather_like_image()
-    assert manager.prepare_colours(image, eink.PHOTO) is image
-    out = manager.prepare_colours(image, eink.GRAPHICS)
-    assert out.mode == "P" and len(out.palette.colors) <= 6
+    photo = eink.colour_plan("image_folder", {}, {})
+    graphics = eink.colour_plan("weather", {}, {})
+    manual_photo = eink.colour_plan("image_folder", {"colourMode": "manual", "colourInk": "0.9"}, {})
+    assert manager.prepare_colours(image, None) is image
+    assert manager.prepare_colours(image, photo) is image             # the driver dithers photos itself
+    for plan in (graphics, manual_photo):                              # own ink saturation: rendered here
+        out = manager.prepare_colours(image, plan)
+        assert out.mode == "P" and len(out.palette.colors) <= 6
 
     manager.display.get_palette.return_value = None   # other displays: unchanged
-    assert manager.prepare_colours(image, eink.GRAPHICS) is image
+    assert manager.prepare_colours(image, graphics) is image

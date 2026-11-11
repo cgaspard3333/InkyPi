@@ -58,16 +58,19 @@ class DisplayManager:
     def get_palette(self):
         return self.display.get_palette() if hasattr(self, "display") else None
 
-    def prepare_colours(self, image, colour_mode):
-        """Applies the colour rendering mode for limited-palette displays (see utils.eink)."""
+    def prepare_colours(self, image, plan):
+        """Applies the colour rendering of limited-palette displays (see utils.eink).
+
+        Graphics mode, and manual settings (own ink saturation), are converted here to an
+        image in the display's pure colours, which the driver sends without dithering again.
+        """
         palette = self.get_palette()
-        if colour_mode != eink.GRAPHICS or not palette:
+        if not plan or not palette or not (plan["mode"] == eink.GRAPHICS or plan["manual"]):
             return image
-        saturation = self.device_config.get_config("image_settings", default={}).get("inky_saturation", 0.5)
-        indices = eink.render_indices(image, palette, eink.GRAPHICS, float(saturation))
+        indices = eink.render_indices(image, palette, plan["mode"], plan["saturation"])
         return eink.to_pure_palette_image(indices, palette)
 
-    def display_image(self, image, image_settings=[], colour_mode=eink.PHOTO):
+    def display_image(self, image, image_settings=[], colour_plan=None):
         
         """
         Delegates image rendering to the appropriate display instance.
@@ -91,8 +94,9 @@ class DisplayManager:
         image = change_orientation(image, self.device_config.get_config("orientation"))
         image = resize_image(image, self.device_config.get_resolution(), image_settings)
         if self.device_config.get_config("inverted_image"): image = image.rotate(180)
-        image = apply_image_enhancement(image, self.device_config.get_config("image_settings"))
-        image = self.prepare_colours(image, colour_mode)
+        enhancement = colour_plan["enhance"] if colour_plan else self.device_config.get_config("image_settings")
+        image = apply_image_enhancement(image, enhancement or {})
+        image = self.prepare_colours(image, colour_plan)
 
         # Pass to the concrete instance to render to the device.
         self.display.display_image(image, image_settings)
