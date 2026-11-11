@@ -6,23 +6,26 @@ set -euo pipefail
 SELECT2_VERSION="4.1.0-beta.1"
 FULLCALENDAR_VERSION="6.1.17"
 JQUERY_VERSION="3.6.0"
+CHARTJS_VERSION="4.5.1"
 
 # Define vendor files: name | url | output path
 declare -a VENDORS=(
   "Select2 CSS|https://cdnjs.cloudflare.com/ajax/libs/select2/${SELECT2_VERSION}/css/select2.min.css|src/static/styles/select2.min.css"
   "Select2 JS|https://cdnjs.cloudflare.com/ajax/libs/select2/${SELECT2_VERSION}/js/select2.min.js|src/static/scripts/select2.min.js"
   "jQuery|https://code.jquery.com/jquery-${JQUERY_VERSION}.min.js|src/static/scripts/jquery.min.js"
-  "Chart JS|https://cdn.jsdelivr.net/npm/chart.js|src/static/scripts/chart.js"
+  "Chart JS|https://cdn.jsdelivr.net/npm/chart.js@${CHARTJS_VERSION}|src/static/scripts/chart.js"
   "Fullcalendar JS|https://cdn.jsdelivr.net/npm/fullcalendar@${FULLCALENDAR_VERSION}/index.global.min.js|src/static/scripts/calendar.min.js"
+  "Fullcalendar locales|https://cdn.jsdelivr.net/npm/@fullcalendar/core@${FULLCALENDAR_VERSION}/locales-all.global.min.js|src/static/scripts/calendar-locales.min.js"
 )
 
 # Download each vendor file
 for vendor in "${VENDORS[@]}"; do
   IFS='|' read -r name url output <<< "$vendor"
   echo "Updating $name..."
-  if curl -sL "$url" -o "$output"; then
+  if curl -fsSL "$url" -o "$output.tmp" && mv "$output.tmp" "$output"; then
     echo "  ✓ Downloaded to $output"
   else
+    rm -f "$output.tmp"
     echo "  ✗ Failed to download $name" >&2
     exit 1
   fi
