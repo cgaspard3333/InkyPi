@@ -425,7 +425,7 @@
                     </div>
                 </div>
                 {% if api_key and api_key.required %}
-                <a class="badge" href="{{ url_for('apikeys.apikeys_page') }}" title="{{ _('Set {key} on the API Keys page', key=api_key.expected_key) }}">🔑 {{ _('{service} needs an API key', service=api_key.service) }}</a>
+                <a class="badge api-key-label" href="{{ url_for('apikeys.apikeys_page') }}" title="{{ _('Set {key} on the API Keys page', key=api_key.expected_key) }}">🔑 {{ _('{service} needs an API key', service=api_key.service) }}</a>
                 {% endif %}
             </div>
             {% if plugin_instance %}
