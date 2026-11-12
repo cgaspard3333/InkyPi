@@ -4,7 +4,7 @@ from utils import eink
 from utils.image_utils import apply_image_enhancement
 from utils.app_utils import (resolve_path, handle_request_files, parse_form, delete_upload_files,
                              collect_upload_paths, referenced_upload_paths)
-from refresh_task import ManualRefresh, PlaylistRefresh
+from refresh_task import ManualRefresh, PlaylistRefresh, PreviewRefresh
 import io
 import re
 import json
@@ -13,6 +13,7 @@ import logging
 from utils.i18n import _
 import threading
 import time
+import uuid
 
 logger = logging.getLogger(__name__)
 plugin_bp = Blueprint("plugin", __name__)
@@ -311,10 +312,13 @@ def update_now():
 # One preview at a time: each one may start a headless browser on a small device
 _preview_lock = threading.Lock()
 
-# Last plugin output, so that changing only the colour rendering of a preview (simulation,
-# photo/graphics/manual) does not render the plugin again (seconds of headless browser on a Pi).
-PREVIEW_CACHE_SECONDS = 600
-_preview_cache = {}
+# The last rendered preview (the plugin's own image, before any colour processing):
+# - "Show on the display" sends that exact image instead of rendering again (random
+#   images would differ, AI images would be generated twice);
+# - changing only the colour rendering (simulation, photo/graphics/manual) reuses it
+#   instead of running the plugin again (seconds of headless browser on a Pi).
+PREVIEW_KEEP_SECONDS = 600
+_last_preview = {}
 
 
 def _preview_cache_key(plugin_id, plugin_settings):
@@ -322,9 +326,9 @@ def _preview_cache_key(plugin_id, plugin_settings):
     return json.dumps([plugin_id, content], sort_keys=True, default=str)
 
 
-def _cached_plugin_image(key):
-    if _preview_cache.get("key") == key and time.monotonic() - _preview_cache["time"] < PREVIEW_CACHE_SECONDS:
-        return _preview_cache["image"].copy()
+def _reusable_preview(key):
+    if _last_preview.get("key") == key and time.monotonic() - _last_preview["time"] < PREVIEW_KEEP_SECONDS:
+        return _last_preview["image"].copy()
     return None
 
 
@@ -351,21 +355,26 @@ def preview_image():
         # (new uploads get new file names, so they never match a cached render)
         reuse = plugin_settings.pop("reuseRender", None) == "true"
         cache_key = _preview_cache_key(plugin_id, plugin_settings)
-        image = _cached_plugin_image(cache_key) if reuse else None
+        image = _reusable_preview(cache_key) if reuse else None
         reused = image is not None
         if image is None:
             plugin = get_plugin_instance(plugin_config)
             image = plugin.generate_image(plugin_settings, device_config)
             if image is None:
                 return jsonify({"error": _("The plugin did not produce an image")}), 500
-            _preview_cache.clear()
-            _preview_cache.update(key=cache_key, image=image.copy(), time=time.monotonic())
+            _last_preview.clear()
+            _last_preview.update(id=uuid.uuid4().hex, key=cache_key, plugin_id=plugin_id,
+                                 image=image.copy(), time=time.monotonic())
+        # the colour settings of the latest request apply when the preview is displayed
+        _last_preview["settings"] = dict(plugin_settings)
+
+        # Shown with the image settings (brightness, contrast...) like on the display, and
+        # optionally as the panel will render it (same colour rendering as a real refresh)
+        plan = eink.colour_plan(plugin_id, plugin_settings, device_config.get_config("image_settings"))
+        image = apply_image_enhancement(image.convert("RGB"), plan["enhance"])
         display_manager = current_app.config.get('DISPLAY_MANAGER')
         palette = display_manager.get_palette() if display_manager else None
         if simulate and palette:
-            # What the panel will show: same enhancement and colour rendering as a real refresh
-            plan = eink.colour_plan(plugin_id, plugin_settings, device_config.get_config("image_settings"))
-            image = apply_image_enhancement(image.convert("RGB"), plan["enhance"])
             image = eink.simulate(image, palette, plan["mode"], plan["saturation"])
 
         buffer = io.BytesIO()
@@ -373,6 +382,7 @@ def preview_image():
         buffer.seek(0)
         response = send_file(buffer, mimetype="image/png")
         response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Preview-Id"] = _last_preview["id"]
         response.headers["X-Preview-Reused"] = "1" if reused else "0"
         return response
     except Exception as e:
@@ -381,6 +391,33 @@ def preview_image():
     finally:
         _preview_lock.release()
         _delete_new_uploads(preview_files, request.form)
+
+
+@plugin_bp.route('/display_preview', methods=['POST'])
+def display_preview():
+    """Shows the last previewed image on the display, without rendering it again."""
+    device_config = current_app.config['DEVICE_CONFIG']
+    refresh_task = current_app.config['REFRESH_TASK']
+    preview_id = (request.get_json(silent=True) or {}).get("preview_id")
+    preview = dict(_last_preview)
+    if not preview_id or preview.get("id") != preview_id or \
+            time.monotonic() - preview["time"] > PREVIEW_KEEP_SECONDS:
+        return jsonify({"error": _("This preview is no longer available, render it again.")}), 410
+    try:
+        if refresh_task.running:
+            refresh_task.manual_update(PreviewRefresh(preview["plugin_id"], preview["image"],
+                                                      preview.get("settings", {})))
+        else:
+            # In development mode, directly update the display
+            plugin_config = device_config.get_plugin(preview["plugin_id"]) or {}
+            current_app.config['DISPLAY_MANAGER'].display_image(
+                preview["image"].copy(), image_settings=plugin_config.get("image_settings", []),
+                colour_plan=eink.colour_plan(preview["plugin_id"], preview.get("settings", {}),
+                                             device_config.get_config("image_settings")))
+    except Exception as e:
+        logger.exception(f"Error in display_preview: {str(e)}")
+        return jsonify({"error": _("An error occurred: {message}", message=str(e))}), 500
+    return jsonify({"success": True, "message": _("Display updated")}), 200
 
 
 def _delete_new_uploads(file_map, form):
