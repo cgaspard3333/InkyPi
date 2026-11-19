@@ -112,11 +112,11 @@ def test_graphics_mode_keeps_faint_letters_on_a_coloured_background():
     pixels = image.load()
     for x in range(20, 60):
         for y in range(14, 26):
-            if (x // 5) % 2 == 0:          # vertical strokes, 5 px wide
+            if x % 10 < 3:                 # vertical strokes, 3 px wide, like letters
                 pixels[x, y] = dim
     indices = eink.render_indices(image, PALETTE, eink.GRAPHICS)
     luma = (eink.perceived_palette(PALETTE) @ [0.299, 0.587, 0.114])[indices]
-    letters = np.array([[(x // 5) % 2 == 0 and 20 <= x < 60 and 14 <= y < 26 for x in range(80)]
+    letters = np.array([[x % 10 < 3 and 20 <= x < 60 and 14 <= y < 26 for x in range(80)]
                         for y in range(40)])
     background = np.zeros_like(letters)
     background[:8] = True
@@ -124,6 +124,11 @@ def test_graphics_mode_keeps_faint_letters_on_a_coloured_background():
     # drawn with one solid ink (blue), not a dither pattern
     inner = letters & np.roll(letters, 1, 1) & np.roll(letters, -1, 1)
     assert (indices[inner] == 4).mean() > 0.9
+    # no dark halo: the background next to the letters looks like the rest of it
+    next_to = np.zeros_like(letters)
+    next_to[14:26, 20:60] = True
+    next_to &= ~letters & ~np.roll(letters, 1, 1) & ~np.roll(letters, -1, 1)
+    assert abs((indices[next_to] == 0).mean() - (indices[background] == 0).mean()) < 0.1
 
 
 def test_vivid_mode_uses_the_real_ink_colours():
@@ -194,3 +199,22 @@ def test_display_manager_prepare_colours():
 
     manager.display.get_palette.return_value = None   # other displays: unchanged
     assert manager.prepare_colours(image, graphics) is image
+
+
+
+def test_graphics_mode_no_dark_outline_around_light_letters():
+    """Word clock (white letters with a soft shadow on navy): the background right next to
+    the lit letters is rendered like the rest of the background, without a dark outline."""
+    from datetime import datetime
+    from PIL import ImageFilter
+    from plugins.clock.clock import Clock
+    image = Clock({"id": "clock"}).draw_word_clock(
+        (400, 480), datetime(2026, 11, 19, 17, 45), (40, 60, 120), (255, 255, 255)).convert("RGB")
+    rgb = np.asarray(image).astype(int)
+    background = (np.abs(rgb - [40, 60, 120]).sum(-1) == 0)
+    lit = Image.fromarray(((rgb.min(-1) > 200) * 255).astype(np.uint8))
+    next_to_lit = background & (np.asarray(lit.filter(ImageFilter.MaxFilter(5))) > 0)
+    indices = eink.render_indices(image, PALETTE, eink.GRAPHICS)
+    black = lambda mask: (indices[mask] == 0).mean()
+    assert next_to_lit.sum() > 100
+    assert abs(black(next_to_lit) - black(background)) < 0.05
