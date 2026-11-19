@@ -247,12 +247,7 @@ def _sharpen_edges(indices, pixels, rgb, palette, neutral_inks, quant_palette=No
     luma = np.asarray(grey, dtype=np.int16)
     out = indices.copy()
     out[edge] = np.where(luma[edge] < text_threshold, black, white)
-    # only the anti-aliasing pixels themselves (lightness between the darkest and lightest
-    # neighbours): plain background next to a letter keeps its normal rendering
-    local_min = np.asarray(grey.filter(ImageFilter.MinFilter(3)), dtype=np.int16)
-    local_max = np.asarray(grey.filter(ImageFilter.MaxFilter(3)), dtype=np.int16)
-    between = (luma > local_min + 8) & (luma < local_max - 8)
-    coloured_edge = ~neutral & (local_range > edge_range) & between
+    coloured_edge = ~neutral & (local_range > edge_range)
     if quant_palette is not None and coloured_edge.any():
         out[coloured_edge] = _distances(rgb[coloured_edge][None].astype(np.float32), quant_palette)[0].argmin(-1)
     return out
@@ -278,10 +273,8 @@ def _restore_faint_detail(pixels, rgb, radius=4, faint_range=96, min_loss=10, ga
         return rgb, np.zeros(faint.shape, dtype=bool)
 
     def detail(values):
-        # difference from the local median: the surrounding colour even next to a letter,
-        # so plain background around letters is not darkened (no halo)
         image = Image.fromarray(np.clip(values, 0, 255).astype(np.uint8), "L")
-        return values - np.asarray(image.filter(ImageFilter.MedianFilter(size)), dtype=np.float32)
+        return values - np.asarray(image.filter(ImageFilter.GaussianBlur(radius)), dtype=np.float32)
 
     missing = gain * detail(luma) - detail(rgb @ coeffs)
     apply = faint & (np.abs(missing) >= min_loss)
