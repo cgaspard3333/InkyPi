@@ -20,6 +20,7 @@ import logging
 import threading
 import argparse
 from utils.app_utils import generate_startup_image, is_cross_origin_request
+from utils import text_font
 from utils.accent import ACCENT_PRESETS, DEFAULT_ACCENT, get_accent
 from utils.i18n import DEFAULT_LANGUAGE as DEFAULT_UI_LANGUAGE, UI_LANGUAGES, get_catalog, normalize_language, translate
 from flask import Flask, request, send_from_directory, jsonify
@@ -63,6 +64,7 @@ template_dirs = [
 app.jinja_loader = ChoiceLoader([FileSystemLoader(directory) for directory in template_dirs])
 
 device_config = Config()
+text_font.configure_from(device_config)
 display_manager = DisplayManager(device_config)
 refresh_task = RefreshTask(device_config, display_manager)
 

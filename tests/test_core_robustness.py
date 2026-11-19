@@ -200,7 +200,8 @@ def test_hung_browser_is_killed_and_temp_files_removed(tmp_path, monkeypatch):
     start = time.monotonic()
     assert image_utils.take_screenshot_html("<html></html>", (800, 480)) is None
     assert time.monotonic() - start < 5
-    assert os.listdir(tmp_path / "tmp") == []
+    # the text font configuration is a reused cache, not a leftover of this render
+    assert [f for f in os.listdir(tmp_path / "tmp") if f != "inkypi-fontconfig"] == []
 
 
 # ---------------------------------------------------------------- scheduled refresh

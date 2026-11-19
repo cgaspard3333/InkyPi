@@ -9,6 +9,8 @@ import subprocess
 import shutil
 import signal
 
+from utils import text_font
+
 logger = logging.getLogger(__name__)
 
 # Hard limit for a headless Chromium screenshot; a hung browser must not block the refresh loop.
@@ -151,6 +153,7 @@ def take_screenshot(target, dimensions, timeout_ms=None):
             "--disable-gpu",
             "--use-gl=swiftshader",
             "--hide-scrollbars",
+            "--disable-lcd-text",  # greyscale anti-aliasing: coloured subpixel fringes become ink dots on e-paper
             "--in-process-gpu",
             "--js-flags=--jitless",
             "--disable-zero-copy",
@@ -165,8 +168,9 @@ def take_screenshot(target, dimensions, timeout_ms=None):
         if timeout_ms:
             command.append(f"--timeout={timeout_ms}")
         # Own process group so the whole browser tree (renderer, gpu...) can be killed on timeout
+        # chosen text font, rendered in monochrome with full hinting (see utils.text_font)
         proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                start_new_session=True)
+                                start_new_session=True, env=text_font.browser_env())
         try:
             _, stderr = proc.communicate(timeout=SCREENSHOT_PROCESS_TIMEOUT)
         except subprocess.TimeoutExpired:
